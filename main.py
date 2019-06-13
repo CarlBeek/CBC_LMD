@@ -2,8 +2,9 @@ import math
 
 
 class Block:
-    def __init__(self, parent_block):
+    def __init__(self, parent_block, weight=0):
         self.parent_block = parent_block
+        self.weight = weight
         if self.parent_block is None:
             self.height = 0
         else:
@@ -117,7 +118,11 @@ class CompressedTree:
             if ancestor != prev_in_tree.block:
                 # haven't made the ancestor node, so parent node is not defined tet
                 node = self.add_tree_node(block=block, parent=None, is_latest=True)
-                anc_node = self.add_tree_node(block=ancestor, parent=prev_in_tree, children={node, child}, is_latest=False)
+                anc_node = self.add_tree_node(
+                    block=ancestor,
+                    parent=prev_in_tree,
+                    children={node, child},
+                    is_latest=False)
                 # update the node's parent pointer
                 node.parent = anc_node
                 prev_in_tree.children.remove(child)
@@ -130,7 +135,7 @@ class CompressedTree:
         node = Node(block, parent, is_latest, children=children)
         # make it a child
         if parent is not None:
-             parent.children.add(node)
+            parent.children.add(node)
         # save it as a node at that height
         height = node.block.height
         if height not in self.nodes_at_height:
@@ -144,7 +149,7 @@ class CompressedTree:
 
     def remove_node(self, node):
         def del_node(node):
-            assert len(node.children) <= 1 # cannot remove a node with more than one child
+            assert len(node.children) <= 1  # cannot remove a node with more than one child
             child = node.children.pop()
             child.parent = node.parent
             node.parent.children.remove(node)
@@ -176,6 +181,18 @@ class CompressedTree:
         new_finalised.parent = None
         self.delete_non_subtree(new_finalised, self.root)
         self.root = new_finalised
+
+    def find_head(self):
+        # calculate the scores of every node starting at the leaves
+        for height in sorted(self.nodes_at_height, reverse=True):
+            for node in self.nodes_at_height[height]:
+                node.score = sum([child.score for child in node.children])
+                node.score += node.block.weight if node.is_latest else 0
+        # run GHOST
+        node = self.root
+        while len(node.children) > 0:
+            node = sorted(node.children, key=lambda x: x.score, reverse=True)[0]
+        return node
 
 
 # Some light tests
@@ -291,7 +308,7 @@ def test_prev_at_height():
 
 
 def test_new_finalised_node_pruning():
-    # SETUP
+    # Setup
     genesis = Block(None)
     tree = CompressedTree(genesis)
 
@@ -312,6 +329,27 @@ def test_new_finalised_node_pruning():
     assert tree.size() == 4
 
 
+def test_ghost():
+    # Setup
+    genesis = Block(None)
+    tree = CompressedTree(genesis)
+
+    for i in range(3):
+        block = Block(genesis, 1)
+        _ = tree.add_new_latest_block(block, i)
+
+    val_0_block = tree.latest_block_nodes[0].block
+    for i in range(3):
+        block = Block(val_0_block, 1)
+        _ = tree.add_new_latest_block(block, i)
+
+    val_0_block = tree.latest_block_nodes[0].block
+    # Giving this block more weight, gives GHOST determanism
+    head_node = tree.add_new_latest_block(Block(val_0_block, weight=2), i)
+    print(tree.find_head().score)
+    assert head_node == tree.find_head()
+
+
 if __name__ == "__main__":
     print("Running tests...")
     test_inserting_on_genesis()
@@ -322,4 +360,5 @@ if __name__ == "__main__":
     test_height()
     test_skip_list()
     test_prev_at_height()
+    test_ghost()
     print("All tests passed!")
