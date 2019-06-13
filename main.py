@@ -85,6 +85,7 @@ class CompressedTree:
         self.latest_block_nodes = dict()
         self.nodes_at_height = dict()
         self.heights = sortedset()
+        self.next_block_to_child_node = dict()
         self.root = self.add_tree_node(genesis, None, True)
 
     def node_with_block(self, block: Block, nodes: Set[Node]) -> Optional[Node]:
@@ -139,32 +140,35 @@ class CompressedTree:
         raise Exception("Fuuuuuck 5.0: No LCA")
 
     def add_new_latest_block(self, block: Block, validator: int) -> Node:
-        new_node = self.add_block(block)
-
         if validator in self.latest_block_nodes:
             old_node = self.latest_block_nodes[validator]
             self.remove_node(old_node)
-
+        new_node = self.add_block(block)
         self.latest_block_nodes[validator] = new_node
         return new_node
 
     def add_block(self, block: Block) -> Node:
         prev_in_tree = self.find_prev_in_tree(block)
         # above prev in tree
-        #above_prev_in_tree = block.prev_at_height(prev_in_tree + 1) -- vlad's optimization
+        above_prev_in_tree = block.prev_at_height(prev_in_tree.block.height + 1)
 
         if prev_in_tree is None:
             raise Exception("Really shouldn't be")
+
         # check if there is path overlap with any children currently in the tree
-        for child in prev_in_tree.children:
+        if above_prev_in_tree in self.next_block_to_child_node:
+            child = self.next_block_to_child_node[above_prev_in_tree]
             ancestor = self.find_lca_block(block, child.block)
             if ancestor != prev_in_tree.block:
-                # haven't made the ancestor node, so parent node is not defined tet
-                node = self.add_tree_node(block=block, parent=None, is_latest=True)
-                anc_node = self.add_tree_node(block=ancestor, parent=prev_in_tree, children={node, child}, is_latest=False)
-                # update the node's parent pointer
-                node.parent = anc_node
+                anc_node = self.add_tree_node(block=ancestor, parent=prev_in_tree, children={child}, is_latest=False)
+                node = self.add_tree_node(block=block, parent=anc_node, is_latest=True)
+                # add node as a child to ancestor node
+                anc_node.children.add(node)
+                # the child is now a child of anc_node, rather than prev_in_tree
                 prev_in_tree.children.remove(child)
+                # have to point the node below the child, but above anc, to the child
+                above_anc = child.block.prev_at_height(ancestor.height + 1)
+                self.next_block_to_child_node[above_anc] = child
                 return node
         # insert on the prev_in_tree
         return self.add_tree_node(block=block, parent=prev_in_tree, is_latest=True)
@@ -174,7 +178,11 @@ class CompressedTree:
         node = Node(block, parent, is_latest, children=children)
         # make it a child
         if parent is not None:
-             parent.children.add(node)
+            parent.children.add(node)
+            # save the next block in the next_block_to_child_node map
+            next_block = block.prev_at_height(parent.block.height + 1)
+            self.next_block_to_child_node[next_block] = node
+
         # save it as a node at that height
         height = node.block.height
         if height not in self.nodes_at_height:
@@ -195,30 +203,54 @@ class CompressedTree:
         return all_nodes
 
     def remove_node(self, node: Node) -> None:
-        def del_node(node):
-            assert len(node.children) <= 1 # cannot remove a node with more than one child
-            child = node.children.pop()
-            child.parent = node.parent
+        def del_node_no_child(node):
+            assert not any(node.children)
+
             node.parent.children.remove(node)
-            node.parent.children.add(child)
             self.nodes_at_height[node.block.height].remove(node)
             # only keep heights that have nodes in them
             if not any(self.nodes_at_height[node.block.height]):
                 del self.nodes_at_height[node.block.height]
                 self.heights.remove(node.block.height)
+
+            # update the next_block_to_child_node map
+            # which will only exist, if a node's block points to itself...
+            if node.block in self.next_block_to_child_node:
+                assert self.next_block_to_child_node[node.block] == node
+                del self.next_block_to_child_node[node.block]
+
+            # delete the node
             del(node)
 
+
+        def del_node_with_child(node):
+            # connects the single child to the parent
+            assert len(node.children) == 1
+
+            child = node.children.pop()
+            child.parent = node.parent
+            node.parent.children.remove(node)
+            node.parent.children.add(child)
+
+            # update the next_block_to_child_node map
+            next_block = block.block.prev_at_height(parent.block.height + 1)
+            assert self.next_block_to_child_node[next_block] == block
+            self.next_block_to_child_node[next_block] = child
+
+            # finially, delete the no-longer-used intermediate node
+            del_node_no_child(node)
+
         num_children = len(node.children)
+
         if num_children > 1:
             node.is_latest = False
         elif num_children == 1:
-            del_node(node)
+            del_node_with_child(node)
         else:
             parent = node.parent
-            parent.children.remove(node)
-            del(node)
+            del_node_no_child(node)
             if not parent.is_latest and len(parent.children) == 1:
-                del_node(parent)
+                del_node_with_child(parent)
 
     def delete_non_subtree(self, new_finalised, node):
         if node == new_finalised:
@@ -278,6 +310,33 @@ def test_inserting_on_intermediate():
 
     assert tree.size == 4
     assert tree.root == on_inter_node.parent.parent
+
+def test_next_block_to_child_node():
+    genesis = Block(None)
+    tree = CompressedTree(genesis)
+
+    block_1 = Block(genesis)
+    node_1 = tree.add_new_latest_block(block_1, 0)
+
+    assert tree.next_block_to_child_node[block_1] == node_1
+    assert len(tree.next_block_to_child_node) == 1
+
+    block_2 = Block(block_1)
+    node_2 = tree.add_new_latest_block(block_2, 0)
+
+    assert tree.next_block_to_child_node[block_1] == node_2
+    assert len(tree.next_block_to_child_node) == 1
+
+    on_inter_block = Block(block_1)
+    on_inter_node = tree.add_new_latest_block(on_inter_block, 1)
+
+    assert tree.next_block_to_child_node[block_1].block == block_1 # node_1 was deleted, so it's a dif node
+    assert tree.next_block_to_child_node[block_2] == node_2
+    assert tree.next_block_to_child_node[on_inter_block] == on_inter_node
+    assert len(tree.next_block_to_child_node) == 3
+
+
+
 
 
 def test_vals_add_on_other_blocks():
@@ -370,6 +429,7 @@ def test_new_finalised_node_pruning():
 
 if __name__ == "__main__":
     print("Running tests...")
+    test_next_block_to_child_node()
     test_inserting_on_genesis()
     test_inserting_on_leaf()
     test_inserting_on_intermediate()
