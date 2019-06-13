@@ -55,7 +55,7 @@ class Block:
 
 
 class Node:
-    parent = None  # type: Node
+    parent = None  # type: Optional[Node]
 
     def __init__(self,
                  block: Block,
@@ -83,8 +83,8 @@ class Node:
 
 class CompressedTree:
     def __init__(self, genesis: Block):
-        self.latest_block_nodes = dict()
-        self.nodes_at_height = dict()
+        self.latest_block_nodes = dict()  # type: Dict[int, Node]
+        self.nodes_at_height = dict()  # type: Dict[int, Set[Node]]
         self.heights = sortedset()
         self.root = self.add_tree_node(genesis, None, True)
 
@@ -114,7 +114,7 @@ class CompressedTree:
         else:
             return self.find_prev_in_tree_with_heights(block, heights, lo, mid_idx)
 
-    def find_prev_in_tree(self, block):
+    def find_prev_in_tree(self, block: Block) -> Optional[Node]:
         return self.find_prev_in_tree_with_heights(block, self.heights, 0, len(self.heights))
 
     def find_lca_block(self, block_1: Block, block_2: Block) -> Block:
@@ -174,7 +174,7 @@ class CompressedTree:
         # insert on the prev_in_tree
         return self.add_tree_node(block=block, parent=prev_in_tree, is_latest=True)
 
-    def add_tree_node(self, block, parent, is_latest, children=None):
+    def add_tree_node(self, block: Block, parent: Optional[Node], is_latest: bool, children: Set[Node]=None) -> Node:
         # create the node
         node = Node(block, parent, is_latest, children=children)
         # make it a child
@@ -193,25 +193,27 @@ class CompressedTree:
     def size(self) -> int:
         return self.root.size
 
-    def all_nodes(self):
-        all_nodes = set()
+    def all_nodes(self) -> Set[Node]:
+        all_nodes = set()  # type: Set[Node]
         for s in self.nodes_at_height.values():
             all_nodes.update(s)
         return all_nodes
 
     def remove_node(self, node: Node) -> None:
-        def del_node(node):
+        def del_node(node: Node) -> None:
             assert len(node.children) <= 1  # cannot remove a node with more than one child
             child = node.children.pop()
             child.parent = node.parent
-            node.parent.children.remove(node)
-            node.parent.children.add(child)
-            self.nodes_at_height[node.block.height].remove(node)
-            # only keep heights that have nodes in them
-            if not any(self.nodes_at_height[node.block.height]):
-                del self.nodes_at_height[node.block.height]
-                self.heights.remove(node.block.height)
-            del(node)
+
+            if node.parent is not None:
+                node.parent.children.remove(node)
+                node.parent.children.add(child)
+                self.nodes_at_height[node.block.height].remove(node)
+                # only keep heights that have nodes in them
+                if not any(self.nodes_at_height[node.block.height]):
+                    del self.nodes_at_height[node.block.height]
+                    self.heights.remove(node.block.height)
+                del(node)
 
         num_children = len(node.children)
         if num_children > 1:
@@ -220,12 +222,13 @@ class CompressedTree:
             del_node(node)
         else:
             parent = node.parent
-            parent.children.remove(node)
-            del(node)
-            if not parent.is_latest and len(parent.children) == 1:
-                del_node(parent)
+            if parent is not None:
+                parent.children.remove(node)
+                del(node)
+                if not parent.is_latest and len(parent.children) == 1:
+                    del_node(parent)
 
-    def delete_non_subtree(self, new_finalised, node):
+    def delete_non_subtree(self, new_finalised: Node, node: Node) -> None:
         if node == new_finalised:
             return
         else:
@@ -233,12 +236,12 @@ class CompressedTree:
             for child in children:
                 self.delete_non_subtree(new_finalised, child)
 
-    def prune(self, new_finalised):
+    def prune(self, new_finalised: Node) -> None:
         new_finalised.parent = None
         self.delete_non_subtree(new_finalised, self.root)
         self.root = new_finalised
 
-    def find_head(self) -> Node:
+    def find_head(self) -> Optional[Node]:
         # calculate the scores of every node starting at the leaves
         for height in sorted(self.nodes_at_height, reverse=True):
             for node in self.nodes_at_height[height]:
