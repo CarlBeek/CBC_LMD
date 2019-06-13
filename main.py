@@ -20,7 +20,6 @@ class Block:
 
     def prev_at_height(self, height):
         if height > self.height:
-            print("Height: {}; Self height: {}".format(height, self.height))
             raise AssertionError("Fuuuuuck 3.0")
         elif height == self.height:
             return self
@@ -57,30 +56,35 @@ class CompressedTree:
         self.nodes_at_height = dict()
         self.root = self.add_tree_node(genesis, None, True)
 
-    def block_in_tree(self, block):
-        def block_below_node(block, node):
-            if node.block == block:
-                return True
-            for child in node.children:
-                if block_below_node(block, child):
-                    return True
-            return False
-        return block_below_node(block, self.root)
-
-    def node_with_block(self, block, node):
-        if node.block == block:
-            return node
-        for child in node.children:
-            node = self.node_with_block(block, child)
-            if node is not None:
+    def node_with_block(self, block, nodes):
+        for node in nodes:
+            if block == node.block:
                 return node
         return None
 
+    def find_prev_in_tree_with_heights(self, block, heights, lo, hi):
+        if hi <= lo:
+            raise Exception("Fuuuuuck 4.0")
+
+        mid_idx = int((lo + hi) / 2)
+        mid_height = heights[mid_idx]
+        block_at_mid = block.prev_at_height(mid_height)
+        node_at_mid = self.node_with_block(block_at_mid, self.nodes_at_height[mid_height])
+        if node_at_mid is not None:
+            if mid_idx + 1 >= len(heights):
+                return node_at_mid
+
+            mid_height_next = heights[mid_idx + 1]
+            if self.node_with_block(block_at_mid, self.nodes_at_height[mid_height_next]) is None:
+                return node_at_mid
+            else:
+                return self.find_prev_in_tree_with_heights(block, heights, mid_idx + 1, hi)
+        else:
+            return self.find_prev_in_tree_with_heights(block, heights, lo, mid_idx)
+
     def find_prev_in_tree(self, block):
-        curr = block
-        while not self.block_in_tree(curr):
-            curr = curr.parent_block
-        return self.node_with_block(curr, self.root)
+        heights = sorted(self.nodes_at_height.keys()) # should make this a tree at some point
+        return self.find_prev_in_tree_with_heights(block, heights, 0, len(heights))
 
     def find_lca_block(self, block_1, block_2):
         min_height = min(block_1.height, block_2.height)
@@ -142,6 +146,13 @@ class CompressedTree:
     def size(self):
         return self.root.size()
 
+    def all_nodes(self):
+        all_nodes = set()
+        for s in self.nodes_at_height.values():
+            for e in s:
+                all_nodes.add(e)
+        return all_nodes
+
     def remove_node(self, node):
         def del_node(node):
             assert len(node.children) <= 1 # cannot remove a node with more than one child
@@ -150,6 +161,9 @@ class CompressedTree:
             node.parent.children.remove(node)
             node.parent.children.add(child)
             self.nodes_at_height[node.block.height].remove(node)
+            # only keep heights that have nodes in them
+            if not any(self.nodes_at_height[node.block.height]):
+                del self.nodes_at_height[node.block.height]
             del(node)
 
         num_children = len(node.children)
@@ -307,7 +321,7 @@ def test_new_finalised_node_pruning():
     assert tree.size() == 5
 
     # Test Pruning
-    new_root = tree.node_with_block(val_0_block, tree.root)
+    new_root = tree.node_with_block(val_0_block, tree.all_nodes())
     tree.prune(new_root)
     assert tree.size() == 4
 
