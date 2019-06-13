@@ -84,16 +84,22 @@ class CompressedTree:
         return self.node_with_block(curr, self.root)
 
     def find_lca_block(self, block_1, block_2):
-        curr_block_1 = block_1
-        while curr_block_1 is not None:
-            curr_block_2 = block_2
-            while curr_block_2 is not None:
-                if curr_block_1 == curr_block_2:
-                    return curr_block_1
-                curr_block_2 = curr_block_2.parent_block
-            curr_block_1 = curr_block_1.parent_block
+        min_height = min(block_1.height, block_2.height)
+        block_1 = block_1.prev_at_height(min_height)
+        block_2 = block_2.prev_at_height(min_height)
 
-        raise AssertionError("Fuuuuuck")
+        if block_1 == block_2:
+            return block_1
+
+        for i in range(32):
+            if block_1.skip_list[i] == block_2.skip_list[i]:
+                # i - 1 is the last height that these blocks have different ancestor
+                # that are in the skip list
+                if i == 0:
+                    return block_1.parent_block
+                else:
+                    return self.find_lca_block(block_1.skip_list[i - 1], block_2.skip_list[i - 1])
+
 
     def add_new_latest_block(self, block, validator):
         new_node = self.add_block(block)
