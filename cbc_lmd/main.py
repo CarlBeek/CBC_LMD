@@ -1,7 +1,6 @@
 import math
 from blist import sortedset
 from typing import (
-    Dict,
     List,
     Optional,
     Set,
@@ -108,7 +107,8 @@ class CompressedTree:
                 return node_at_mid
 
             mid_height_next = heights[mid_idx + 1]
-            if self.node_with_block(block_at_mid, self.nodes_at_height[mid_height_next]) is None:
+            block_at_mid_next = block.prev_at_height(mid_height_next)
+            if self.node_with_block(block_at_mid_next, self.nodes_at_height[mid_height_next]) is None:
                 return node_at_mid
             else:
                 return self.find_prev_in_tree_with_heights(block, heights, mid_idx + 1, hi)
@@ -157,16 +157,23 @@ class CompressedTree:
             raise Exception("Really shouldn't be")
 
         # check if there is path overlap with any children currently in the tree
+        if len(prev_in_tree.children) == 0:
+            return self.add_tree_node(block=block, parent=prev_in_tree, is_latest=True)
+
         if above_prev_in_tree in self.next_block_to_child_node:
             child = self.next_block_to_child_node[above_prev_in_tree]
             ancestor = self.find_lca_block(block, child.block)
             if ancestor != prev_in_tree.block:
+
                 anc_node = self.add_tree_node(
                     block=ancestor,
                     parent=prev_in_tree,
                     children={child},
                     is_latest=False
                 )
+
+                child.parent = anc_node
+
                 node = self.add_tree_node(block=block, parent=anc_node, is_latest=True)
                 # add node as a child to ancestor node
                 anc_node.children.add(node)
@@ -228,23 +235,29 @@ class CompressedTree:
             # delete the node
             del(node)
 
-
         def del_node_with_child(node):
             # connects the single child to the parent
             assert len(node.children) == 1
 
+            # connect child to new parent
             child = node.children.pop()
             child.parent = node.parent
-            node.parent.children.remove(node)
             node.parent.children.add(child)
 
-            # update the next_block_to_child_node map
-            next_block = block.block.prev_at_height(parent.block.height + 1)
-            assert self.next_block_to_child_node[next_block] == block
+            # # update the next_block_to_child_node map
+            next_block = node.block.prev_at_height(node.parent.block.height + 1)
+            assert self.next_block_to_child_node[next_block] == node
             self.next_block_to_child_node[next_block] = child
 
-            # finially, delete the no-longer-used intermediate node
-            del_node_no_child(node)
+            # cleanup
+            node.parent.children.remove(node)
+            self.nodes_at_height[node.block.height].remove(node)
+            # only keep heights that have nodes in them
+            if not any(self.nodes_at_height[node.block.height]):
+                del self.nodes_at_height[node.block.height]
+                self.heights.remove(node.block.height)
+
+            del(node)
 
         num_children = len(node.children)
 

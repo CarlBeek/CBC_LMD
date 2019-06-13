@@ -1,6 +1,3 @@
-import pytest
-
-
 from cbc_lmd.main import (
     Block,
     CompressedTree,
@@ -155,7 +152,8 @@ def test_ghost():
 
     val_0_block = tree.latest_block_nodes[0].block
     # Giving this block more weight, gives GHOST determanism
-    head_node = tree.add_new_latest_block(Block(val_0_block, weight=2), 1)
+    b = Block(val_0_block, weight=2)
+    head_node = tree.add_new_latest_block(b, 0)
     assert head_node == tree.find_head()
 
 
@@ -178,7 +176,33 @@ def test_next_block_to_child_node():
     on_inter_block = Block(block_1)
     on_inter_node = tree.add_new_latest_block(on_inter_block, 1)
 
-    assert tree.next_block_to_child_node[block_1].block == block_1 # node_1 was deleted, so it's a dif node
+    assert tree.next_block_to_child_node[block_1].block == block_1  # node_1 was deleted, so it's a dif node
     assert tree.next_block_to_child_node[block_2] == node_2
     assert tree.next_block_to_child_node[on_inter_block] == on_inter_node
     assert len(tree.next_block_to_child_node) == 3
+
+
+def test_delete_with_child():
+    genesis = Block(None)
+    tree = CompressedTree(genesis)
+
+    block_1_val_0 = Block(genesis)
+    _ = tree.add_new_latest_block(block_1_val_0, 0)
+
+    block_2_val_0 = Block(block_1_val_0)
+    _ = tree.add_new_latest_block(block_2_val_0, 0)
+
+    block_1_val_1 = Block(block_1_val_0)
+    _ = tree.add_new_latest_block(block_1_val_1, 1)
+
+    block_1_val_2 = Block(genesis)
+    _ = tree.add_new_latest_block(block_1_val_2, 2)
+
+    block_3_val_0 = Block(block_1_val_2)
+    _ = tree.add_new_latest_block(block_3_val_0, 0)
+
+    assert tree.size == 4
+    assert len(tree.root.children) == 2
+    assert tree.latest_block_nodes[1] in tree.root.children
+    assert tree.latest_block_nodes[2] in tree.root.children
+    assert tree.latest_block_nodes[0] not in tree.root.children
