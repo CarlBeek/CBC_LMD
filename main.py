@@ -1,27 +1,42 @@
 import math
+from typing import (
+    Dict,
+    List,
+    Optional,
+    Set,
+)
+
+
+SKIP_LENGTH = 32
 
 
 class Block:
-    def __init__(self, parent_block, weight=0):
-        self.parent_block = parent_block
-        self.weight = weight
-        if self.parent_block is None:
-            self.height = 0
-        else:
-            self.height = self.parent_block.height + 1
-        self.skip_list = [None] * 32
+    height = 0
+    skip_list = []  # type: List[Optional[Block]]
+    parent_block = None  # type: Block
+    weight = 0
 
+    def __init__(self, parent_block: Optional['Block']=None, weight: int=0) -> None:
+        if parent_block is not None:
+            self.parent_block = parent_block
+            self.height = self.parent_block.height + 1
+        else:
+            self.height = 0
+
+        self.weight = weight
+        
+        self.skip_list = [None] * SKIP_LENGTH
         # build the skip list
-        for i in range(32):
+        for i in range(SKIP_LENGTH):
             if i == 0:
                 self.skip_list[0] = parent_block
             else:
-                if self.skip_list[i - 1] is not None:
-                    self.skip_list[i] = self.skip_list[i - 1].skip_list[i - 1]
+                block = self.skip_list[i - 1]
+                if block is not None:
+                    self.skip_list[i] = block.skip_list[i - 1]
 
-    def prev_at_height(self, height):
+    def prev_at_height(self, height: int) -> 'Block':
         if height > self.height:
-            print("Height: {}; Self height: {}".format(height, self.height))
             raise AssertionError("Fuuuuuck 3.0")
         elif height == self.height:
             return self
@@ -31,59 +46,77 @@ class Block:
             diff = self.height - height
             # find the exponent of the smallest power of two
             pow_of_two = int(math.log(diff, 2))
-            return self.skip_list[pow_of_two].prev_at_height(height)
-
+            block = self.skip_list[pow_of_two]
+            if block is not None:
+                return block.prev_at_height(height)
+            else:
+                raise AssertionError("Fuuuuuck 4.0") 
+            
 
 class Node:
-    def __init__(self, block, parent, is_latest, score=0, children=None):
+    parent = None  # type: Node
+
+    def __init__(self,
+                 block: Block,
+                 parent: Optional['Node'],
+                 is_latest: bool,
+                 score: int=0,
+                 children: Set['Node']=None) -> None:
         if children is None:
-            self.children = set()
+            self.children = set()  # type: Set[Node]
         else:
             self.children = children
         self.block = block
-        self.parent = parent
+        if parent is not None:
+            self.parent = parent
         self.is_latest = is_latest
         self.score = score
 
-    def size(self):
+    @property
+    def size(self) -> int:
         size = 1
         for child in self.children:
-            size += child.size()
+            size += child.size
         return size
 
 
 class CompressedTree:
-    def __init__(self, genesis):
-        self.latest_block_nodes = dict()
-        self.nodes_at_height = dict()
+    def __init__(self, genesis: Block) -> None:
+        self.latest_block_nodes = dict()  # type: Dict[int, Node]
+        self.nodes_at_height = dict()  # type: Dict[int,Set[Node]]
         self.root = self.add_tree_node(genesis, None, True)
 
-    def block_in_tree(self, block):
-        def block_below_node(block, node):
-            if node.block == block:
-                return True
-            for child in node.children:
-                if block_below_node(block, child):
-                    return True
-            return False
-        return block_below_node(block, self.root)
-
-    def node_with_block(self, block, node):
-        if node.block == block:
-            return node
-        for child in node.children:
-            node = self.node_with_block(block, child)
-            if node is not None:
+    def node_with_block(self, block: Block, nodes: Set[Node]) -> Optional[Node]:
+        for node in nodes:
+            if block == node.block:
                 return node
         return None
 
-    def find_prev_in_tree(self, block):
-        curr = block
-        while not self.block_in_tree(curr):
-            curr = curr.parent_block
-        return self.node_with_block(curr, self.root)
+    def find_prev_in_tree_with_heights(self, block: Block, heights: List[int], lo: int, hi: int) -> Optional[Node]:
+        if hi <= lo:
+            raise Exception("Fuuuuuck 4.0")
 
-    def find_lca_block(self, block_1, block_2):
+        mid_idx = int((lo + hi) / 2)
+        mid_height = heights[mid_idx]
+        block_at_mid = block.prev_at_height(mid_height)
+        node_at_mid = self.node_with_block(block_at_mid, self.nodes_at_height[mid_height])
+        if node_at_mid is not None:
+            if mid_idx + 1 >= len(heights):
+                return node_at_mid
+
+            mid_height_next = heights[mid_idx + 1]
+            if self.node_with_block(block_at_mid, self.nodes_at_height[mid_height_next]) is None:
+                return node_at_mid
+            else:
+                return self.find_prev_in_tree_with_heights(block, heights, mid_idx + 1, hi)
+        else:
+            return self.find_prev_in_tree_with_heights(block, heights, lo, mid_idx)
+
+    def find_prev_in_tree(self, block):
+        heights = sorted(self.nodes_at_height.keys()) # should make this a tree at some point
+        return self.find_prev_in_tree_with_heights(block, heights, 0, len(heights))
+
+    def find_lca_block(self, block_1: Block, block_2: Block) -> Block:
         min_height = min(block_1.height, block_2.height)
         block_1 = block_1.prev_at_height(min_height)
         block_2 = block_2.prev_at_height(min_height)
@@ -91,16 +124,21 @@ class CompressedTree:
         if block_1 == block_2:
             return block_1
 
-        for i in range(32):
+        for i in range(SKIP_LENGTH):
             if block_1.skip_list[i] == block_2.skip_list[i]:
                 # i - 1 is the last height that these blocks have different ancestor
                 # that are in the skip list
                 if i == 0:
                     return block_1.parent_block
                 else:
-                    return self.find_lca_block(block_1.skip_list[i - 1], block_2.skip_list[i - 1])
+                    block_a = block_1.skip_list[i - 1]
+                    block_b = block_2.skip_list[i - 1]
+                    if block_a is not None and block_b is not None:
+                        return self.find_lca_block(block_a, block_b)
 
-    def add_new_latest_block(self, block, validator):
+        raise Exception("Fuuuuuck 5.0: No LCA")
+
+    def add_new_latest_block(self, block: Block, validator: int) -> Node:
         new_node = self.add_block(block)
 
         if validator in self.latest_block_nodes:
@@ -110,8 +148,13 @@ class CompressedTree:
         self.latest_block_nodes[validator] = new_node
         return new_node
 
-    def add_block(self, block):
+    def add_block(self, block: Block) -> Node:
         prev_in_tree = self.find_prev_in_tree(block)
+        # above prev in tree
+        # above_prev_in_tree = block.prev_at_height(prev_in_tree + 1) -- vlad's optimization
+
+        if prev_in_tree is None:
+            raise Exception("Really shouldn't be")
         # check if there is path overlap with any children currently in the tree
         for child in prev_in_tree.children:
             ancestor = self.find_lca_block(block, child.block)
@@ -144,10 +187,17 @@ class CompressedTree:
         # return the new node
         return node
 
-    def size(self):
-        return self.root.size()
+    @property
+    def size(self) -> int:
+        return self.root.size
 
-    def remove_node(self, node):
+    def all_nodes(self):
+        all_nodes = set()
+        for s in self.nodes_at_height.values():
+            all_nodes.update(s)
+        return all_nodes
+
+    def remove_node(self, node: Node) -> None:
         def del_node(node):
             assert len(node.children) <= 1  # cannot remove a node with more than one child
             child = node.children.pop()
@@ -155,6 +205,9 @@ class CompressedTree:
             node.parent.children.remove(node)
             node.parent.children.add(child)
             self.nodes_at_height[node.block.height].remove(node)
+            # only keep heights that have nodes in them
+            if not any(self.nodes_at_height[node.block.height]):
+                del self.nodes_at_height[node.block.height]
             del(node)
 
         num_children = len(node.children)
@@ -204,7 +257,7 @@ def test_inserting_on_genesis():
     block = Block(genesis)
     node = tree.add_new_latest_block(block, 0)
 
-    assert tree.size() == 2
+    assert tree.size == 2
     assert tree.root.block == genesis
     assert tree.root.children.pop() == node
 
@@ -219,7 +272,7 @@ def test_inserting_on_leaf():
     block_2 = Block(block_1)
     node_2 = tree.add_new_latest_block(block_2, 0)
 
-    assert tree.size() == 2
+    assert tree.size == 2
     assert tree.root.block == genesis
     assert tree.root.children.pop() == node_2
 
@@ -237,7 +290,7 @@ def test_inserting_on_intermediate():
     on_inter_block = Block(block_1)
     on_inter_node = tree.add_new_latest_block(on_inter_block, 1)
 
-    assert tree.size() == 4
+    assert tree.size == 4
     assert tree.root == on_inter_node.parent.parent
 
 
@@ -254,7 +307,7 @@ def test_vals_add_on_other_blocks():
         block = Block(val_0_block)
         _ = tree.add_new_latest_block(block, i)
 
-    assert tree.size() == 5
+    assert tree.size == 5
 
 
 def test_height():
@@ -321,12 +374,12 @@ def test_new_finalised_node_pruning():
         block = Block(val_0_block)
         _ = tree.add_new_latest_block(block, i)
 
-    assert tree.size() == 5
+    assert tree.size == 5
 
     # Test Pruning
-    new_root = tree.node_with_block(val_0_block, tree.root)
+    new_root = tree.node_with_block(val_0_block, tree.all_nodes())
     tree.prune(new_root)
-    assert tree.size() == 4
+    assert tree.size == 4
 
 
 def test_ghost():
@@ -346,7 +399,6 @@ def test_ghost():
     val_0_block = tree.latest_block_nodes[0].block
     # Giving this block more weight, gives GHOST determanism
     head_node = tree.add_new_latest_block(Block(val_0_block, weight=2), i)
-    print(tree.find_head().score)
     assert head_node == tree.find_head()
 
 
