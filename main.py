@@ -238,11 +238,11 @@ class CompressedTree:
         self.delete_non_subtree(new_finalised, self.root)
         self.root = new_finalised
 
-    def find_head(self):
+    def find_head(self) -> Node:
         # calculate the scores of every node starting at the leaves
         for height in sorted(self.nodes_at_height, reverse=True):
             for node in self.nodes_at_height[height]:
-                node.score = sum([child.score for child in node.children])
+                node.score = sum(child.score for child in node.children)
                 node.score += node.block.weight if node.is_latest else 0
         # run GHOST
         node = self.root
@@ -401,7 +401,7 @@ def test_ghost():
 
     val_0_block = tree.latest_block_nodes[0].block
     # Giving this block more weight, gives GHOST determanism
-    head_node = tree.add_new_latest_block(Block(val_0_block, weight=2), i)
+    head_node = tree.add_new_latest_block(Block(val_0_block, weight=2), 0)
     assert head_node == tree.find_head()
 
 
