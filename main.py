@@ -121,6 +121,20 @@ class CompressedTree:
                 parent.parent.children.add(par_child)
                 del(parent)
 
+    def delete_non_subtree(self, new_finalised, node):
+        if node == new_finalised:
+            return
+        else:
+            children = node.children
+            for child in children:
+                self.delete_non_subtree(new_finalised, child)
+
+    def prune(self, new_finalised):
+        # new_finalised = self.add_block(new_finalised)
+        new_finalised.parent = None
+        self.delete_non_subtree(new_finalised, self.root)
+        self.root = new_finalised
+
 
 # Some light tests
 
@@ -182,10 +196,33 @@ def test_vals_add_on_other_blocks():
     assert tree.size() == 5
 
 
+def test_new_finalised_node_pruning():
+    #### SETUP ####
+    genesis = Block(None)
+    tree = CompressedTree(genesis)
+
+    for i in range(3):
+        block = Block(genesis)
+        node = tree.add_new_latest_block(block, i)
+    
+    val_0_block = tree.latest_block_nodes[0].block
+    for i in range(3):
+        block = Block(val_0_block)
+        node = tree.add_new_latest_block(block, i)
+
+    assert tree.size() == 5
+
+    ### Test Pruning ###
+    new_root = tree.node_with_block(val_0_block, tree.root)
+    tree.prune(new_root)
+    assert tree.size() == 4
+    
+
 if __name__ == "__main__":
     print("Running tests...")
     test_inserting_on_genesis()
     test_inserting_on_leaf()
     test_inserting_on_intermediate()
     test_vals_add_on_other_blocks()
+    test_new_finalised_node_pruning()
     print("All tests passed!")
