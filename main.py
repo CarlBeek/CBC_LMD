@@ -115,6 +115,9 @@ class CompressedTree:
 
     def add_block(self, block):
         prev_in_tree = self.find_prev_in_tree(block)
+        # above prev in tree
+        #above_prev_in_tree = block.prev_at_height(prev_in_tree + 1) -- vlad's optimization
+
         # check if there is path overlap with any children currently in the tree
         for child in prev_in_tree.children:
             ancestor = self.find_lca_block(block, child.block)
@@ -149,8 +152,7 @@ class CompressedTree:
     def all_nodes(self):
         all_nodes = set()
         for s in self.nodes_at_height.values():
-            for e in s:
-                all_nodes.add(e)
+            all_nodes.update(s)
         return all_nodes
 
     def remove_node(self, node):
