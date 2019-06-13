@@ -14,7 +14,7 @@ def test_inserting_on_genesis():
     block = Block(genesis)
     node = tree.add_new_latest_block(block, 0)
 
-    assert tree.size() == 2
+    assert tree.size == 2
     assert tree.root.block == genesis
     assert tree.root.children.pop() == node
 
@@ -24,30 +24,32 @@ def test_inserting_on_leaf():
     tree = CompressedTree(genesis)
 
     block_1 = Block(genesis)
-    node_1 = tree.add_new_latest_block(block_1, 0)
+    _ = tree.add_new_latest_block(block_1, 0)
 
     block_2 = Block(block_1)
     node_2 = tree.add_new_latest_block(block_2, 0)
 
-    assert tree.size() == 2
+    assert tree.size == 2
     assert tree.root.block == genesis
     assert tree.root.children.pop() == node_2
+
 
 def test_inserting_on_intermediate():
     genesis = Block(None)
     tree = CompressedTree(genesis)
 
     block_1 = Block(genesis)
-    node_1 = tree.add_new_latest_block(block_1, 0)
+    _ = tree.add_new_latest_block(block_1, 0)
 
     block_2 = Block(block_1)
-    node_2 = tree.add_new_latest_block(block_2, 0)
+    _ = tree.add_new_latest_block(block_2, 0)
 
     on_inter_block = Block(block_1)
     on_inter_node = tree.add_new_latest_block(on_inter_block, 1)
 
-    assert tree.size() == 4
+    assert tree.size == 4
     assert tree.root == on_inter_node.parent.parent
+
 
 def test_vals_add_on_other_blocks():
     genesis = Block(None)
@@ -55,24 +57,26 @@ def test_vals_add_on_other_blocks():
 
     for i in range(3):
         block = Block(genesis)
-        node = tree.add_new_latest_block(block, i)
+        _ = tree.add_new_latest_block(block, i)
 
     val_0_block = tree.latest_block_nodes[0].block
     for i in range(3):
         block = Block(val_0_block)
-        node = tree.add_new_latest_block(block, i)
+        _ = tree.add_new_latest_block(block, i)
 
-    assert tree.size() == 5
+    assert tree.size == 5
+
 
 def test_height():
     genesis = Block(None)
     assert genesis.height == 0
 
     prev_block = genesis
-    for i in range(1024):
+    for _ in range(1024):
         block = Block(prev_block)
         assert block.height == prev_block.height + 1
         prev_block = block
+
 
 def test_skip_list():
     blocks = []
@@ -80,7 +84,7 @@ def test_skip_list():
     blocks.append(genesis)
 
     prev_block = genesis
-    for i in range(1024):
+    for _ in range(1024):
         block = Block(prev_block)
         blocks.append(block)
         prev_block = block
@@ -94,6 +98,7 @@ def test_skip_list():
                 assert height - 2**idx < 0
             else:
                 assert skip_block.height == height - 2**idx
+
 
 def test_prev_at_height():
     blocks = []
@@ -111,3 +116,44 @@ def test_prev_at_height():
             at_height = block.prev_at_height(i)
             assert at_height == blocks[i]
 
+
+def test_new_finalised_node_pruning():
+    # Setup
+    genesis = Block(None)
+    tree = CompressedTree(genesis)
+
+    for i in range(3):
+        block = Block(genesis)
+        _ = tree.add_new_latest_block(block, i)
+
+    val_0_block = tree.latest_block_nodes[0].block
+    for i in range(3):
+        block = Block(val_0_block)
+        _ = tree.add_new_latest_block(block, i)
+
+    assert tree.size == 5
+
+    # Test Pruning
+    new_root = tree.node_with_block(val_0_block, tree.all_nodes())
+    tree.prune(new_root)
+    assert tree.size == 4
+
+
+def test_ghost():
+    # Setup
+    genesis = Block(None)
+    tree = CompressedTree(genesis)
+
+    for i in range(3):
+        block = Block(genesis, 1)
+        _ = tree.add_new_latest_block(block, i)
+
+    val_0_block = tree.latest_block_nodes[0].block
+    for i in range(3):
+        block = Block(val_0_block, 1)
+        _ = tree.add_new_latest_block(block, i)
+
+    val_0_block = tree.latest_block_nodes[0].block
+    # Giving this block more weight, gives GHOST determanism
+    head_node = tree.add_new_latest_block(Block(val_0_block, weight=2), 0)
+    assert head_node == tree.find_head()

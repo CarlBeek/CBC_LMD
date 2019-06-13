@@ -249,6 +249,7 @@ class CompressedTree:
         while len(node.children) > 0:
             node = sorted(node.children, key=lambda x: x.score, reverse=True)[0]
         return node
+<<<<<<< HEAD
 
 
 # Some light tests
@@ -417,3 +418,5 @@ if __name__ == "__main__":
     test_prev_at_height()
     test_ghost()
     print("All tests passed!")
+=======
+>>>>>>> after rebasing
