@@ -155,5 +155,5 @@ def test_ghost():
 
     val_0_block = tree.latest_block_nodes[0].block
     # Giving this block more weight, gives GHOST determanism
-    head_node = tree.add_new_latest_block(Block(val_0_block, weight=2), 0)
+    head_node = tree.add_new_latest_block(Block(val_0_block, weight=2), 1)
     assert head_node == tree.find_head()
