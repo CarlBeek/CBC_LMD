@@ -135,7 +135,7 @@ class CompressedTree:
                     if block_a is not None and block_b is not None:
                         return self.find_lca_block(block_a, block_b)
 
-        raise Exception("No LCA")
+        raise Exception("Fuuuuuck 5.0: No LCA")
 
     def add_new_latest_block(self, block: Block, validator: int) -> Node:
         new_node = self.add_block(block)
@@ -153,7 +153,7 @@ class CompressedTree:
         #above_prev_in_tree = block.prev_at_height(prev_in_tree + 1) -- vlad's optimization
 
         if prev_in_tree is None:
-            raise Exception("No way!")
+            raise Exception("Really shouldn't be")
         # check if there is path overlap with any children currently in the tree
         for child in prev_in_tree.children:
             ancestor = self.find_lca_block(block, child.block)
