@@ -1,7 +1,36 @@
+import math
 
 class Block:
     def __init__(self, parent_block):
         self.parent_block = parent_block
+        if self.parent_block is None:
+            self.height = 0
+        else:
+            self.height = self.parent_block.height + 1
+        self.skip_list = [None] * 32
+
+        # build the skip list
+        for i in range(32):
+            if i == 0:
+                self.skip_list[0] = parent_block
+            else:
+                if self.skip_list[i - 1] is not None:
+                    self.skip_list[i] = self.skip_list[i - 1].skip_list[i - 1]
+
+    def prev_at_height(self, height):
+        if height > self.height:
+            print("Height: {}; Self height: {}".format(height, self.height))
+            raise AssertionError("Fuuuuuck 3.0")
+        elif height == self.height:
+            return self
+        else:
+            # find the block with the lowest height above that height
+            # that is also in the skip list
+            diff = self.height - height
+            # find the exponent of the smallest power of two
+            pow_of_two = int(math.log(diff, 2))
+            return self.skip_list[pow_of_two].prev_at_height(height)
+
 
 class Node:
     def __init__(self, block, parent, is_latest, score=0, children=None):
@@ -55,16 +84,22 @@ class CompressedTree:
         return self.node_with_block(curr, self.root)
 
     def find_lca_block(self, block_1, block_2):
-        curr_block_1 = block_1
-        while curr_block_1 is not None:
-            curr_block_2 = block_2
-            while curr_block_2 is not None:
-                if curr_block_1 == curr_block_2:
-                    return curr_block_1
-                curr_block_2 = curr_block_2.parent_block
-            curr_block_1 = curr_block_1.parent_block
+        min_height = min(block_1.height, block_2.height)
+        block_1 = block_1.prev_at_height(min_height)
+        block_2 = block_2.prev_at_height(min_height)
 
-        raise AssertionError("Fuuuuuck")
+        if block_1 == block_2:
+            return block_1
+
+        for i in range(32):
+            if block_1.skip_list[i] == block_2.skip_list[i]:
+                # i - 1 is the last height that these blocks have different ancestor
+                # that are in the skip list
+                if i == 0:
+                    return block_1.parent_block
+                else:
+                    return self.find_lca_block(block_1.skip_list[i - 1], block_2.skip_list[i - 1])
+
 
     def add_new_latest_block(self, block, validator):
         new_node = self.add_block(block)
@@ -110,6 +145,7 @@ class CompressedTree:
             child.parent = node.parent
             node.parent.children.remove(node)
             node.parent.children.add(child)
+            del(node)
         else:
             parent = node.parent
             parent.children.remove(node)
@@ -130,7 +166,6 @@ class CompressedTree:
                 self.delete_non_subtree(new_finalised, child)
 
     def prune(self, new_finalised):
-        # new_finalised = self.add_block(new_finalised)
         new_finalised.parent = None
         self.delete_non_subtree(new_finalised, self.root)
         self.root = new_finalised
@@ -195,6 +230,53 @@ def test_vals_add_on_other_blocks():
 
     assert tree.size() == 5
 
+def test_height():
+    genesis = Block(None)
+    assert genesis.height == 0
+
+    prev_block = genesis
+    for i in range(1024):
+        block = Block(prev_block)
+        assert block.height == prev_block.height + 1
+        prev_block = block
+
+def test_skip_list():
+    blocks = []
+    genesis = Block(None)
+    blocks.append(genesis)
+
+    prev_block = genesis
+    for i in range(1024):
+        block = Block(prev_block)
+        blocks.append(block)
+        prev_block = block
+
+    for block in blocks:
+        height = block.height
+        assert block == blocks[height]
+
+        for idx, skip_block in enumerate(block.skip_list):
+            if skip_block is None:
+                assert height - 2**idx < 0
+            else:
+                assert skip_block.height == height - 2**idx
+
+def test_prev_at_height():
+    blocks = []
+    genesis = Block(None)
+    blocks.append(genesis)
+
+    prev_block = genesis
+    for i in range(256):
+        block = Block(prev_block)
+        blocks.append(block)
+        prev_block = block
+
+    for block in blocks:
+        for i in range(block.height):
+            at_height = block.prev_at_height(i)
+            assert at_height == blocks[i]
+
 
 def test_new_finalised_node_pruning():
     #### SETUP ####
@@ -225,4 +307,7 @@ if __name__ == "__main__":
     test_inserting_on_intermediate()
     test_vals_add_on_other_blocks()
     test_new_finalised_node_pruning()
+    test_height()
+    test_skip_list()
+    test_prev_at_height()
     print("All tests passed!")
