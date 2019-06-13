@@ -249,4 +249,3 @@ class CompressedTree:
         while len(node.children) > 0:
             node = sorted(node.children, key=lambda x: x.score, reverse=True)[0]
         return node
-    
