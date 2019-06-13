@@ -3,7 +3,6 @@ class Block:
     def __init__(self, parent_block):
         self.parent_block = parent_block
 
-
 class Node:
     def __init__(self, block, parent, is_latest, score=0, children=None):
         if children is None:
@@ -14,7 +13,6 @@ class Node:
         self.parent = parent
         self.is_latest = is_latest
         self.score = score
-
 
     def size(self):
         size = 1
@@ -49,16 +47,14 @@ class CompressedTree:
         return None
 
     def find_prev_in_tree(self, block):
-        # Return the node, that contains the block, that is the highest block that is a previous block of block
 
         curr = block
         while not self.block_in_tree(curr):
             curr = curr.parent_block
 
-        # get the node that contains this block
         return self.node_with_block(curr, self.root)
 
-    def find_lca(self, block_1, block_2):
+    def find_lca_block(self, block_1, block_2):
         curr_block_1 = block_1
         while curr_block_1 is not None:
             curr_block_2 = block_2
@@ -67,7 +63,7 @@ class CompressedTree:
                     return curr_block_1
                 curr_block_2 = curr_block_2.parent_block
             curr_block_1 = curr_block_1.parent_block
-            
+
         raise AssertionError("Fuuuuuck")
 
     def add_new_latest_block(self, block, validator):
@@ -87,10 +83,13 @@ class CompressedTree:
             prev_in_tree.children.add(node)
             return node
         for child in prev_in_tree.children:
-            ancestor = self.find_lca(block, child.block)
+            ancestor = self.find_lca_block(block, child.block)
             if ancestor != prev_in_tree.block:
-                node = Node(block, ancestor, is_latest=True)
+                # haven't made the ancestor node, yet
+                node = Node(block, None, is_latest=True)
                 anc_node = Node(ancestor, prev_in_tree, children={node, child}, is_latest=False)
+                # update the node's parent pointer
+                node.parent = anc_node
                 prev_in_tree.children.add(anc_node)
                 prev_in_tree.children.remove(child)
                 return node
@@ -101,7 +100,6 @@ class CompressedTree:
 
     def size(self):
         return self.root.size()
-        
 
     def remove_node(self, node):
         num_children = len(node.children)
@@ -124,27 +122,70 @@ class CompressedTree:
                 del(parent)
 
 
+# Some light tests
 
-if __name__ == "__main__":
+def test_inserting_on_genesis():
     genesis = Block(None)
     tree = CompressedTree(genesis)
-    print(tree.root.children)
+
+    block = Block(genesis)
+    node = tree.add_new_latest_block(block, 0)
+
+    assert tree.size() == 2
+    assert tree.root.block == genesis
+    assert tree.root.children.pop() == node
+
+
+def test_inserting_on_leaf():
+    genesis = Block(None)
+    tree = CompressedTree(genesis)
+
+    block_1 = Block(genesis)
+    node_1 = tree.add_new_latest_block(block_1, 0)
+
+    block_2 = Block(block_1)
+    node_2 = tree.add_new_latest_block(block_2, 0)
+
+    assert tree.size() == 2
+    assert tree.root.block == genesis
+    assert tree.root.children.pop() == node_2
+
+def test_inserting_on_intermediate():
+    genesis = Block(None)
+    tree = CompressedTree(genesis)
+
+    block_1 = Block(genesis)
+    node_1 = tree.add_new_latest_block(block_1, 0)
+
+    block_2 = Block(block_1)
+    node_2 = tree.add_new_latest_block(block_2, 0)
+
+    on_inter_block = Block(block_1)
+    on_inter_node = tree.add_new_latest_block(on_inter_block, 1)
+
+    assert tree.size() == 4
+    assert tree.root == on_inter_node.parent.parent
+
+def test_vals_add_on_other_blocks():
+    genesis = Block(None)
+    tree = CompressedTree(genesis)
 
     for i in range(3):
-        block_1 = Block(genesis)
-        node_1 = tree.add_new_latest_block(block_1, i)
-        print("After val {} added {}, size of tree is {}".format(i, node_1, tree.size()))
-        block_2 = Block(block_1)
-        node_2 = tree.add_new_latest_block(block_2, i)
-        print("After val {} added {}, size of tree is {}".format(i, node_2, tree.size()))
-        assert tree.latest_block_nodes[i].block == block_2
+        block = Block(genesis)
+        node = tree.add_new_latest_block(block, i)
 
     val_0_block = tree.latest_block_nodes[0].block
     for i in range(3):
         block = Block(val_0_block)
         node = tree.add_new_latest_block(block, i)
-        print("After val {} added {}, size of tree is {}".format(i, node, tree.size()))
-        print("Root children: {}".format(tree.root.children))
+
+    assert tree.size() == 5
 
 
-    print(tree.root.children.pop().children)
+if __name__ == "__main__":
+    print("Running tests...")
+    test_inserting_on_genesis()
+    test_inserting_on_leaf()
+    test_inserting_on_intermediate()
+    test_vals_add_on_other_blocks()
+    print("All tests passed!")
