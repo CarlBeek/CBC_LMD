@@ -52,9 +52,9 @@ class Node:
 
 class CompressedTree:
     def __init__(self, genesis):
-        node = Node(genesis, None, True)
-        self.root = node
         self.latest_block_nodes = dict()
+        self.nodes_at_height = dict()
+        self.root = self.add_tree_node(genesis, None, True)
 
     def block_in_tree(self, block):
         def block_below_node(block, node):
@@ -113,24 +113,32 @@ class CompressedTree:
 
     def add_block(self, block):
         prev_in_tree = self.find_prev_in_tree(block)
-        if len(prev_in_tree.children) == 0:
-            node = Node(block, prev_in_tree, is_latest=True)
-            prev_in_tree.children.add(node)
-            return node
+        # check if there is path overlap with any children currently in the tree
         for child in prev_in_tree.children:
             ancestor = self.find_lca_block(block, child.block)
             if ancestor != prev_in_tree.block:
-                # haven't made the ancestor node, yet
-                node = Node(block, None, is_latest=True)
-                anc_node = Node(ancestor, prev_in_tree, children={node, child}, is_latest=False)
+                # haven't made the ancestor node, so parent node is not defined tet
+                node = self.add_tree_node(block=block, parent=None, is_latest=True)
+                anc_node = self.add_tree_node(block=ancestor, parent=prev_in_tree, children={node, child}, is_latest=False)
                 # update the node's parent pointer
                 node.parent = anc_node
-                prev_in_tree.children.add(anc_node)
                 prev_in_tree.children.remove(child)
                 return node
         # insert on the prev_in_tree
-        node = Node(block, prev_in_tree, True)
-        prev_in_tree.children.add(node)
+        return self.add_tree_node(block=block, parent=prev_in_tree, is_latest=True)
+
+    def add_tree_node(self, block, parent, is_latest, children=None):
+        # create the node
+        node = Node(block, parent, is_latest, children=children)
+        # make it a child
+        if parent is not None:
+             parent.children.add(node)
+        # save it as a node at that height
+        height = node.block.height
+        if height not in self.nodes_at_height:
+            self.nodes_at_height[height] = set()
+        self.nodes_at_height[height].add(node)
+        # return the new node
         return node
 
     def size(self):
