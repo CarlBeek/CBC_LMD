@@ -1,5 +1,5 @@
 import math
-
+from blist import sortedset
 
 class Block:
     def __init__(self, parent_block):
@@ -54,6 +54,7 @@ class CompressedTree:
     def __init__(self, genesis):
         self.latest_block_nodes = dict()
         self.nodes_at_height = dict()
+        self.heights = sortedset()
         self.root = self.add_tree_node(genesis, None, True)
 
     def node_with_block(self, block, nodes):
@@ -83,8 +84,7 @@ class CompressedTree:
             return self.find_prev_in_tree_with_heights(block, heights, lo, mid_idx)
 
     def find_prev_in_tree(self, block):
-        heights = sorted(self.nodes_at_height.keys()) # should make this a tree at some point
-        return self.find_prev_in_tree_with_heights(block, heights, 0, len(heights))
+        return self.find_prev_in_tree_with_heights(block, self.heights, 0, len(self.heights))
 
     def find_lca_block(self, block_1, block_2):
         min_height = min(block_1.height, block_2.height)
@@ -142,6 +142,7 @@ class CompressedTree:
         height = node.block.height
         if height not in self.nodes_at_height:
             self.nodes_at_height[height] = set()
+            self.heights.add(height)
         self.nodes_at_height[height].add(node)
         # return the new node
         return node
@@ -166,6 +167,7 @@ class CompressedTree:
             # only keep heights that have nodes in them
             if not any(self.nodes_at_height[node.block.height]):
                 del self.nodes_at_height[node.block.height]
+                self.heights.remove(node.block.height)
             del(node)
 
         num_children = len(node.children)
