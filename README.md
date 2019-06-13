@@ -7,6 +7,6 @@ Make it fast, please!
 Set up a python 3 virtual environment, and then run the command:
 
 ~~~~
-pip install blist
-python main.py
+pip install -r requirements.txt
+pytest test_all.py
 ~~~~
