@@ -1,7 +1,36 @@
+import math
 
 class Block:
     def __init__(self, parent_block):
         self.parent_block = parent_block
+        if self.parent_block is None:
+            self.height = 0
+        else:
+            self.height = self.parent_block.height + 1
+        self.skip_list = [None] * 32
+
+        # build the skip list
+        for i in range(32):
+            if i == 0:
+                self.skip_list[0] = parent_block
+            else:
+                if self.skip_list[i - 1] is not None:
+                    self.skip_list[i] = self.skip_list[i - 1].skip_list[i - 1]
+
+    def prev_at_height(self, height):
+        if height > self.height:
+            print("Height: {}; Self height: {}".format(height, self.height))
+            raise AssertionError("Fuuuuuck 3.0")
+        elif height == self.height:
+            return self
+        else:
+            # find the block with the lowest height above that height
+            # that is also in the skip list
+            diff = self.height - height
+            # find the exponent of the smallest power of two
+            pow_of_two = int(math.log(diff, 2))
+            return self.skip_list[pow_of_two].prev_at_height(height)
+
 
 class Node:
     def __init__(self, block, parent, is_latest, score=0, children=None):
@@ -110,6 +139,7 @@ class CompressedTree:
             child.parent = node.parent
             node.parent.children.remove(node)
             node.parent.children.add(child)
+            del(node)
         else:
             parent = node.parent
             parent.children.remove(node)
@@ -120,7 +150,6 @@ class CompressedTree:
                 parent.parent.children.remove(parent)
                 parent.parent.children.add(par_child)
                 del(parent)
-
 
 # Some light tests
 
@@ -181,6 +210,53 @@ def test_vals_add_on_other_blocks():
 
     assert tree.size() == 5
 
+def test_height():
+    genesis = Block(None)
+    assert genesis.height == 0
+
+    prev_block = genesis
+    for i in range(1024):
+        block = Block(prev_block)
+        assert block.height == prev_block.height + 1
+        prev_block = block
+
+def test_skip_list():
+    blocks = []
+    genesis = Block(None)
+    blocks.append(genesis)
+
+    prev_block = genesis
+    for i in range(1024):
+        block = Block(prev_block)
+        blocks.append(block)
+        prev_block = block
+
+    for block in blocks:
+        height = block.height
+        assert block == blocks[height]
+
+        for idx, skip_block in enumerate(block.skip_list):
+            if skip_block is None:
+                assert height - 2**idx < 0
+            else:
+                assert skip_block.height == height - 2**idx
+
+def test_prev_at_height():
+    blocks = []
+    genesis = Block(None)
+    blocks.append(genesis)
+
+    prev_block = genesis
+    for i in range(256):
+        block = Block(prev_block)
+        blocks.append(block)
+        prev_block = block
+
+    for block in blocks:
+        for i in range(block.height):
+            at_height = block.prev_at_height(i)
+            assert at_height == blocks[i]
+
 
 if __name__ == "__main__":
     print("Running tests...")
@@ -188,4 +264,7 @@ if __name__ == "__main__":
     test_inserting_on_leaf()
     test_inserting_on_intermediate()
     test_vals_add_on_other_blocks()
+    test_height()
+    test_skip_list()
+    test_prev_at_height()
     print("All tests passed!")
