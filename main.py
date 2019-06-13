@@ -76,7 +76,6 @@ class CompressedTree:
         return None
 
     def find_prev_in_tree(self, block):
-
         curr = block
         while not self.block_in_tree(curr):
             curr = curr.parent_block
@@ -145,25 +144,26 @@ class CompressedTree:
         return self.root.size()
 
     def remove_node(self, node):
-        num_children = len(node.children)
-        if num_children > 1:
-            node.is_latest = False
-        elif num_children == 1:
+        def del_node(node):
+            assert len(node.children) <= 1 # cannot remove a node with more than one child
             child = node.children.pop()
             child.parent = node.parent
             node.parent.children.remove(node)
             node.parent.children.add(child)
+            self.nodes_at_height[node.block.height].remove(node)
             del(node)
+
+        num_children = len(node.children)
+        if num_children > 1:
+            node.is_latest = False
+        elif num_children == 1:
+            del_node(node)
         else:
             parent = node.parent
             parent.children.remove(node)
             del(node)
             if not parent.is_latest and len(parent.children) == 1:
-                par_child = parent.children.pop()
-                par_child.parent = parent.parent
-                parent.parent.children.remove(parent)
-                parent.parent.children.add(par_child)
-                del(parent)
+                del_node(parent)
 
 # Some light tests
 
