@@ -132,7 +132,7 @@ def test_new_finalised_node_pruning():
     assert tree.size == 5
 
     # Test Pruning
-    new_root = tree.node_with_block(val_0_block, tree.all_nodes())
+    new_root = tree.node_with_block[val_0_block]
     tree.prune(new_root)
     assert tree.size == 4
 
@@ -159,29 +159,29 @@ def test_ghost():
     assert head_node == tree.find_head(weight)
 
 
-def test_next_block_to_child_node():
+def test_path_block_to_child_node():
     genesis = Block(None)
     tree = CompressedTree(genesis)
 
     block_1 = Block(genesis)
     node_1 = tree.add_new_latest_block(block_1, 0)
 
-    assert tree.next_block_to_child_node[block_1] == node_1
-    assert len(tree.next_block_to_child_node) == 1
+    assert tree.path_block_to_child_node[block_1] == node_1
+    assert len(tree.path_block_to_child_node) == 1
 
     block_2 = Block(block_1)
     node_2 = tree.add_new_latest_block(block_2, 0)
 
-    assert tree.next_block_to_child_node[block_1] == node_2
-    assert len(tree.next_block_to_child_node) == 1
+    assert tree.path_block_to_child_node[block_1] == node_2
+    assert len(tree.path_block_to_child_node) == 1
 
     on_inter_block = Block(block_1)
     on_inter_node = tree.add_new_latest_block(on_inter_block, 1)
 
-    assert tree.next_block_to_child_node[block_1].block == block_1  # node_1 was deleted, so it's a dif node
-    assert tree.next_block_to_child_node[block_2] == node_2
-    assert tree.next_block_to_child_node[on_inter_block] == on_inter_node
-    assert len(tree.next_block_to_child_node) == 3
+    assert tree.path_block_to_child_node[block_1].block == block_1  # node_1 was deleted, so it's a dif node
+    assert tree.path_block_to_child_node[block_2] == node_2
+    assert tree.path_block_to_child_node[on_inter_block] == on_inter_node
+    assert len(tree.path_block_to_child_node) == 3
 
 
 def test_delete_with_child():
@@ -208,6 +208,67 @@ def test_delete_with_child():
     assert tree.latest_block_nodes[1] in tree.root.children
     assert tree.latest_block_nodes[2] in tree.root.children
     assert tree.latest_block_nodes[0] not in tree.root.children
+
+def test_add_not_on_root():
+    genesis = Block(None)
+    tree = CompressedTree(genesis)
+
+    block = Block(None)
+    node = tree.add_new_latest_block(block, 0)
+
+    assert node is None
+
+    block = Block(genesis)
+    node = tree.add_new_latest_block(block, 0)
+    
+    assert tree.root.children.pop() == node
+    assert node.block == block
+
+
+def test_find_prev_in_tree():
+    genesis = Block(None)
+    tree = CompressedTree(genesis)
+
+    block = Block(None)
+    assert None is tree.find_prev_node_in_tree(block)
+
+    block = Block(genesis)
+    assert tree.root is tree.find_prev_node_in_tree(block)
+
+    for i in range(3):
+        block = Block(genesis)
+        _ = tree.add_new_latest_block(block, i)
+
+    block_1 = Block(tree.latest_block_nodes[2].block)
+    assert block_1.parent_block == tree.find_prev_node_in_tree(block_1).block
+    tree.add_new_latest_block(block_1, 2)
+    assert block_1 == tree.latest_block_nodes[2].block
+
+    block_2 = Block(tree.latest_block_nodes[2].block)
+    assert block_2.parent_block == tree.find_prev_node_in_tree(block_2).block
+
+    """
+    for i in range(1024):
+        0
+    Val 2's block was built on
+    by val 2
+    1
+    Val 2's block was built on
+
+
+
+        print(i)
+        prev_val = random.randint(0, 2)
+        print("Val {}'s block was built on".format(prev_val))
+        new_block = Block(tree.latest_block_nodes[prev_val].block)
+        if new_block.parent_block != tree.find_prev_node_in_tree(new_block).block:
+            b = tree.find_prev_node_in_tree(new_block).block
+            assert new_block.parent_block == b
+        new_val = random.randint(0, 2)
+        print("by val {}".format(new_val))
+        tree.add_new_latest_block(new_block, new_val)
+        assert tree.size <= 6
+    """
 
 """
 def test_massive_tree():

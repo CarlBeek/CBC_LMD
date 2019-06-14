@@ -34,7 +34,7 @@ class Block:
 
     def prev_at_height(self, height: int) -> 'Block':
         if height > self.height:
-            raise AssertionError("Fuuuuuck 3.0")
+            raise Exception("Block {} at height {} has no prev block at height {}".format(self, self.height, height))
         elif height == self.height:
             return self
         else:
@@ -47,7 +47,7 @@ class Block:
             if block is not None:
                 return block.prev_at_height(height)
             else:
-                raise AssertionError("Fuuuuuck 4.0")
+                raise Exception("Skip list error")
 
 
 class Node:
@@ -73,30 +73,133 @@ class Node:
         for child in self.children:
             size += child.size
         return size
+    
+    @property
+    def is_leaf(self) -> bool:
+        return not any(self.children)
+
+    def nodes_in_subtree(self) -> Set['Node']:
+        nodes = {self}
+        for child in self.children:
+            nodes.update(child.nodes_in_subtree())
+        return nodes
 
 
 class CompressedTree:
     def __init__(self, genesis: Block):
         self.latest_block_nodes = dict()
-        self.nodes_at_height = dict()
-        self.heights = sortedset()
-        self.next_block_to_child_node = dict()
+        self.blocks_at_height = dict()
+        self.node_with_block = dict()
+        self.heights = sortedset(key = lambda x: -x) # store from largest -> smallest
+        self.path_block_to_child_node = dict()
         self.root = self.add_tree_node(genesis, None, True)
 
-    def node_with_block(self, block: Block, nodes: Set[Node]) -> Optional[Node]:
-        for node in nodes:
-            if block == node.block:
-                return node
+    # TODO: can this function be in a subclass? I'm thinking that we have an LMD tree...
+    # and then we can also do an IMD tree, or something... but we might not get
+    # efficiency gains here 
+    def add_new_latest_block(self, block: Block, validator: int) -> Node:
+        # remove the validators last message, if they have one
+        if validator in self.latest_block_nodes and self.latest_block_nodes[validator]:
+            old_node = self.latest_block_nodes[validator]
+            self.remove_node(old_node)
+        # add the validators new message, and save it
+        new_node = self.add_block_with_weight(block)
+        self.latest_block_nodes[validator] = new_node
+        return new_node
+
+    def add_block_with_weight(self, block: Block) -> Node:
+        # node in tree that is the most recent ancestor of block
+        prev_node_in_tree = self.find_prev_node_in_tree(block)
+        if prev_node_in_tree is None:
+            # the block being added is not built on top the current root, so we don't need to add it
+            return None
+
+        # the child of prev_node_in_tree.block that is on the path to block
+        path_block = block.prev_at_height(prev_node_in_tree.block.height + 1)
+
+        # if this path_block points to a child, then the block has path overlap 
+        # with some child of prev_node_in_tree
+        if path_block in self.path_block_to_child_node:
+            path_overlap_child = self.path_block_to_child_node[path_block]
+            block_and_child_lca = self.find_lca_block(block, path_overlap_child.block)
+
+            assert block_and_child_lca != prev_node_in_tree.block # if this was true, there would be no path overlap!
+
+            anc_node = self.add_tree_node(
+                block=block_and_child_lca,
+                parent=prev_node_in_tree,
+                children={path_overlap_child}, # missing node with new block, as not created yet
+                has_weight=False
+            )
+
+            node = self.add_tree_node(block=block, parent=anc_node, has_weight=True)
+
+            # update the path_overlap_child to have correct parent and path pointers
+            path_overlap_child.parent = anc_node
+            child_path_block = path_overlap_child.block.prev_at_height(block_and_child_lca.height + 1)
+            self.path_block_to_child_node[child_path_block] = path_overlap_child
+
+            # children of the prev_node_in_tree should not have old child anymore (it is a child of anc_node)
+            prev_node_in_tree.children.remove(path_overlap_child)
+
+            return node
+        else:
+            # there is no path overlap between the the block and any child of prev_node_in tree
+            # (which might be because the prev_node_in_tree is a leaf and so has no children)
+            node = self.add_tree_node(
+                block=block, 
+                parent=prev_node_in_tree, 
+                has_weight=True
+            )
+            return node
+
+    def add_tree_node(self, block, parent, has_weight, children=None):
+        node = Node(block, parent, has_weight, children=children)
+        self.node_with_block[block] = node
+
+        if parent is not None:
+            # add it as a child of its parent
+            parent.children.add(node)
+            # point to it with a path_block
+            path_block = block.prev_at_height(parent.block.height + 1)
+            self.path_block_to_child_node[path_block] = node
+
+        # save it as a node at that height
+        height = node.block.height
+        if height not in self.blocks_at_height:
+            self.blocks_at_height[height] = set()
+            self.heights.add(height)
+        self.blocks_at_height[height].add(block)
+        # return the new node
+        return node
+
+    def find_prev_node_in_tree(self, block: Block) -> Optional[Node]:
+        for height in self.heights:
+            # self.heights is in decreasing order
+            if height <= block.height:
+                prev_at_height = block.prev_at_height(height)
+                if prev_at_height in self.blocks_at_height[height]:
+                    # have to get block at that height
+                    return self.node_with_block[prev_at_height]
+        # The block has no previous block in the tree
         return None
 
+        
+        #return self.find_prev_in_tree_with_heights(block, self.heights, 0, len(self.heights))    
+
+    """
+    # NOTE: this method is broken. It assumes that if some block has a previous^n node in the 
+    # tree at height h, then it has a node in the tree at all heights less than h that are in
+    # in the tree. But this is not the case... so the method does not work!
     def find_prev_in_tree_with_heights(self, block: Block, heights: List[int], lo: int, hi: int) -> Optional[Node]:
         if hi <= lo:
-            raise Exception("Fuuuuuck 4.0")
+            # TODO: figure out if this should just be less than...
+            return None
 
         mid_idx = int((lo + hi) / 2)
         mid_height = heights[mid_idx]
         block_at_mid = block.prev_at_height(mid_height)
-        node_at_mid = self.node_with_block(block_at_mid, self.nodes_at_height[mid_height])
+        #node_at_mid = self.node_with_block(block_at_mid, self.nodes_at_height[mid_height])
         if node_at_mid is not None:
             if mid_idx + 1 >= len(heights):
                 return node_at_mid
@@ -112,9 +215,69 @@ class CompressedTree:
                 return self.find_prev_in_tree_with_heights(block, heights, mid_idx + 1, hi)
         else:
             return self.find_prev_in_tree_with_heights(block, heights, lo, mid_idx)
+    """
 
-    def find_prev_in_tree(self, block):
-        return self.find_prev_in_tree_with_heights(block, self.heights, 0, len(self.heights))
+    def remove_node(self, node: Node) -> None:
+        def del_node_no_child(node):
+            assert node.is_leaf
+
+            node.parent.children.remove(node)
+            self.blocks_at_height[node.block.height].remove(node.block)
+            # only keep heights that have nodes in them
+            if not any(self.blocks_at_height[node.block.height]):
+                del self.blocks_at_height[node.block.height]
+                self.heights.remove(node.block.height)
+
+            # update the path_block_to_child_node map
+            # which will only exist, if a node's block points to itself...
+            if node.block in self.path_block_to_child_node:
+                assert self.path_block_to_child_node[node.block] == node
+                del self.path_block_to_child_node[node.block]
+
+            # delete the node
+            del(self.node_with_block[node.block])
+            del(node)
+
+        def del_node_with_child(node):
+            # connects the single child to the parent
+            assert len(node.children) == 1
+
+            # connect child to new parent
+            child = node.children.pop()
+            child.parent = node.parent
+            node.parent.children.add(child)
+
+            # update the path_block_to_child_node map
+            next_block = node.block.prev_at_height(node.parent.block.height + 1)
+            assert self.path_block_to_child_node[next_block] == node
+            self.path_block_to_child_node[next_block] = child
+
+            # cleanup
+            node.parent.children.remove(node)
+            self.blocks_at_height[node.block.height].remove(node.block)
+            # only keep heights that have nodes in them
+            if not any(self.blocks_at_height[node.block.height]):
+                del self.blocks_at_height[node.block.height]
+                self.heights.remove(node.block.height)
+
+            del(self.node_with_block[node.block])
+            del(node)
+
+        num_children = len(node.children)
+
+        if num_children > 1:
+            # internal node
+            node.has_weight = False
+        elif num_children == 1:
+            # node has a single child
+            del_node_with_child(node)
+        else:
+            # node is a leaf, so it can be removed
+            parent = node.parent
+            del_node_no_child(node)
+            # if it's parent has no weight, and has only one child, it can be deleted too
+            if not parent.has_weight and len(parent.children) == 1:
+                del_node_with_child(parent)
 
     def find_lca_block(self, block_1: Block, block_2: Block) -> Block:
         min_height = min(block_1.height, block_2.height)
@@ -138,142 +301,18 @@ class CompressedTree:
 
         raise Exception("Fuuuuuck 5.0: No LCA")
 
-    def add_new_latest_block(self, block: Block, validator: int) -> Node:
-        if validator in self.latest_block_nodes:
-            old_node = self.latest_block_nodes[validator]
-            self.remove_node(old_node)
-        new_node = self.add_block(block)
-        self.latest_block_nodes[validator] = new_node
-        return new_node
-
-    def add_block(self, block: Block) -> Node:
-        prev_in_tree = self.find_prev_in_tree(block)
-        # above prev in tree
-        above_prev_in_tree = block.prev_at_height(prev_in_tree.block.height + 1)
-
-        if prev_in_tree is None:
-            raise Exception("Really shouldn't be")
-
-        # check if there is path overlap with any children currently in the tree
-        if len(prev_in_tree.children) == 0:
-            return self.add_tree_node(block=block, parent=prev_in_tree, has_weight=True)
-
-        if above_prev_in_tree in self.next_block_to_child_node:
-            child = self.next_block_to_child_node[above_prev_in_tree]
-            ancestor = self.find_lca_block(block, child.block)
-            if ancestor != prev_in_tree.block:
-
-                anc_node = self.add_tree_node(
-                    block=ancestor,
-                    parent=prev_in_tree,
-                    children={child},
-                    has_weight=False
-                )
-
-                child.parent = anc_node
-
-                node = self.add_tree_node(block=block, parent=anc_node, has_weight=True)
-                # add node as a child to ancestor node
-                anc_node.children.add(node)
-                # the child is now a child of anc_node, rather than prev_in_tree
-                prev_in_tree.children.remove(child)
-                # have to point the node below the child, but above anc, to the child
-                above_anc = child.block.prev_at_height(ancestor.height + 1)
-                self.next_block_to_child_node[above_anc] = child
-                return node
-        # insert on the prev_in_tree
-        return self.add_tree_node(block=block, parent=prev_in_tree, has_weight=True)
-
-    def add_tree_node(self, block, parent, has_weight, children=None):
-        # create the node
-        node = Node(block, parent, has_weight, children=children)
-        # make it a child
-        if parent is not None:
-            parent.children.add(node)
-            # save the next block in the next_block_to_child_node map
-            next_block = block.prev_at_height(parent.block.height + 1)
-            self.next_block_to_child_node[next_block] = node
-
-        # save it as a node at that height
-        height = node.block.height
-        if height not in self.nodes_at_height:
-            self.nodes_at_height[height] = set()
-            self.heights.add(height)
-        self.nodes_at_height[height].add(node)
-        # return the new node
-        return node
-
     @property
     def size(self) -> int:
         return self.root.size
 
     def all_nodes(self):
-        all_nodes = set()
-        for s in self.nodes_at_height.values():
-            all_nodes.update(s)
-        return all_nodes
-
-    def remove_node(self, node: Node) -> None:
-        def del_node_no_child(node):
-            assert not any(node.children)
-
-            node.parent.children.remove(node)
-            self.nodes_at_height[node.block.height].remove(node)
-            # only keep heights that have nodes in them
-            if not any(self.nodes_at_height[node.block.height]):
-                del self.nodes_at_height[node.block.height]
-                self.heights.remove(node.block.height)
-
-            # update the next_block_to_child_node map
-            # which will only exist, if a node's block points to itself...
-            if node.block in self.next_block_to_child_node:
-                assert self.next_block_to_child_node[node.block] == node
-                del self.next_block_to_child_node[node.block]
-
-            # delete the node
-            del(node)
-
-        def del_node_with_child(node):
-            # connects the single child to the parent
-            assert len(node.children) == 1
-
-            # connect child to new parent
-            child = node.children.pop()
-            child.parent = node.parent
-            node.parent.children.add(child)
-
-            # # update the next_block_to_child_node map
-            next_block = node.block.prev_at_height(node.parent.block.height + 1)
-            assert self.next_block_to_child_node[next_block] == node
-            self.next_block_to_child_node[next_block] = child
-
-            # cleanup
-            node.parent.children.remove(node)
-            self.nodes_at_height[node.block.height].remove(node)
-            # only keep heights that have nodes in them
-            if not any(self.nodes_at_height[node.block.height]):
-                del self.nodes_at_height[node.block.height]
-                self.heights.remove(node.block.height)
-
-            del(node)
-
-        num_children = len(node.children)
-
-        if num_children > 1:
-            node.has_weight = False
-        elif num_children == 1:
-            del_node_with_child(node)
-        else:
-            parent = node.parent
-            del_node_no_child(node)
-            if not parent.has_weight and len(parent.children) == 1:
-                del_node_with_child(parent)
+        return self.root.nodes_in_subtree()
 
     def delete_non_subtree(self, new_finalised, node):
         if node != new_finalised:
             for child in node.children:
                 self.delete_non_subtree(new_finalised, child)
-                # TODO: actually delete the node
+                # TODO: actually delete the node, updating the cached things properly!
 
     def prune(self, new_finalised):
         new_finalised.parent = None
@@ -299,3 +338,4 @@ class CompressedTree:
         while len(node.children) > 0:
             node = sorted(node.children, key=lambda n: scores.get(n, 0), reverse=True)[0]
         return node
+
