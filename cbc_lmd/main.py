@@ -4,6 +4,7 @@ from typing import (
     List,
     Optional,
     Set,
+    Dict,
 )
 
 
@@ -87,11 +88,11 @@ class Node:
 
 class CompressedTree:
     def __init__(self, genesis: Block):
-        self.latest_block_nodes = dict()
-        self.blocks_at_height = dict()
-        self.node_with_block = dict()
+        self.latest_block_nodes = dict() # type: Dict[int, Node]
+        self.blocks_at_height = dict() # type: Dict[int, Set[Node]]
+        self.node_with_block = dict() # type: Dict[Block, Node]
         self.heights = sortedset(key = lambda x: -x) # store from largest -> smallest
-        self.path_block_to_child_node = dict()
+        self.path_block_to_child_node = dict() # type: Dict[Block, Node]
         self.root = self.add_tree_node(genesis, None, True)
 
     # TODO: can this function be in a subclass? I'm thinking that we have an LMD tree...
@@ -153,7 +154,7 @@ class CompressedTree:
             )
             return node
 
-    def add_tree_node(self, block, parent, has_weight, children=None):
+    def add_tree_node(self, block: Block, parent: Node, has_weight: bool, children:Set[Node]=None) -> Node:
         node = Node(block, parent, has_weight, children=children)
         self.node_with_block[block] = node
 
@@ -183,9 +184,6 @@ class CompressedTree:
                     return self.node_with_block[prev_at_height]
         # The block has no previous block in the tree
         return None
-
-        
-        #return self.find_prev_in_tree_with_heights(block, self.heights, 0, len(self.heights))    
 
     """
     # NOTE: this method is broken. It assumes that if some block has a previous^n node in the 
@@ -218,7 +216,7 @@ class CompressedTree:
     """
 
     def remove_node(self, node: Node) -> None:
-        def del_node_no_child(node):
+        def del_node_no_child(node: Node) -> None:
             assert node.is_leaf
 
             node.parent.children.remove(node)
@@ -238,7 +236,7 @@ class CompressedTree:
             del(self.node_with_block[node.block])
             del(node)
 
-        def del_node_with_child(node):
+        def del_node_with_child(node: Node) -> None:
             # connects the single child to the parent
             assert len(node.children) == 1
 
@@ -305,21 +303,21 @@ class CompressedTree:
     def size(self) -> int:
         return self.root.size
 
-    def all_nodes(self):
+    def all_nodes(self) -> Set[Node]:
         return self.root.nodes_in_subtree()
 
-    def delete_non_subtree(self, new_finalised, node):
+    def delete_non_subtree(self, new_finalised: Node, node: Node) -> None:
         if node != new_finalised:
             for child in node.children:
                 self.delete_non_subtree(new_finalised, child)
                 # TODO: actually delete the node, updating the cached things properly!
 
-    def prune(self, new_finalised):
+    def prune(self, new_finalised: Node) -> None:
         new_finalised.parent = None
         self.delete_non_subtree(new_finalised, self.root)
         self.root = new_finalised
 
-    def calculate_scores(self, node, weight, score):
+    def calculate_scores(self, node: Node, weight: Dict[Block, int], score: Dict[Node, int]) -> Dict[Block, int]:
         if not any(node.children):
             score[node] = weight.get(node.block, 0)
         else:
@@ -329,7 +327,7 @@ class CompressedTree:
                 score[node] += score[child]
         return score
 
-    def find_head(self, weight) -> Node:
+    def find_head(self, weight: Dict[Block, int]) -> Node:
         # calculate the score for each block
         scores = self.calculate_scores(self.root, weight, dict())
 
