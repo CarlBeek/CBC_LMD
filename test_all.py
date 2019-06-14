@@ -1,3 +1,4 @@
+import random
 from cbc_lmd.main import (
     Block,
     CompressedTree,
@@ -142,19 +143,20 @@ def test_ghost():
     tree = CompressedTree(genesis)
 
     for i in range(3):
-        block = Block(genesis, 1)
+        block = Block(genesis)
         _ = tree.add_new_latest_block(block, i)
 
     val_0_block = tree.latest_block_nodes[0].block
     for i in range(3):
-        block = Block(val_0_block, 1)
+        block = Block(val_0_block)
         _ = tree.add_new_latest_block(block, i)
 
     val_0_block = tree.latest_block_nodes[0].block
     # Giving this block more weight, gives GHOST determanism
-    b = Block(val_0_block, weight=2)
+    b = Block(val_0_block)
     head_node = tree.add_new_latest_block(b, 0)
-    assert head_node == tree.find_head()
+    weight = {b: 2}
+    assert head_node == tree.find_head(weight)
 
 
 def test_next_block_to_child_node():
@@ -206,3 +208,21 @@ def test_delete_with_child():
     assert tree.latest_block_nodes[1] in tree.root.children
     assert tree.latest_block_nodes[2] in tree.root.children
     assert tree.latest_block_nodes[0] not in tree.root.children
+
+"""
+def test_massive_tree():
+    genesis = Block(None)
+    tree = CompressedTree(genesis)
+
+    for i in range(3):
+        block = Block(genesis)
+        _ = tree.add_new_latest_block(block, i)
+
+    for i in range(1024):
+        print(i)
+        prev_val = random.randint(0, 2)
+        new_block = Block(tree.latest_block_nodes[prev_val].block)
+        new_val = random.randint(0, 2)
+        tree.add_new_latest_block(new_block, new_val)
+        assert tree.size <= 6
+"""

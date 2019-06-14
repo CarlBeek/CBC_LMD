@@ -14,16 +14,13 @@ class Block:
     height = 0
     skip_list = []  # type: List[Optional[Block]]
     parent_block = None  # type: Block
-    weight = 0
 
-    def __init__(self, parent_block: Optional['Block']=None, weight: int=0) -> None:
+    def __init__(self, parent_block: Optional['Block']=None) -> None:
         if parent_block is not None:
             self.parent_block = parent_block
             self.height = self.parent_block.height + 1
         else:
             self.height = 0
-
-        self.weight = weight
 
         self.skip_list = [None] * SKIP_LENGTH
         # build the skip list
@@ -59,8 +56,7 @@ class Node:
     def __init__(self,
                  block: Block,
                  parent: Optional['Node'],
-                 is_latest: bool,
-                 score: int=0,
+                 has_weight: bool,
                  children: Set['Node']=None) -> None:
         if children is None:
             self.children = set()  # type: Set[Node]
@@ -69,8 +65,7 @@ class Node:
         self.block = block
         if parent is not None:
             self.parent = parent
-        self.is_latest = is_latest
-        self.score = score
+        self.has_weight = has_weight
 
     @property
     def size(self) -> int:
@@ -107,6 +102,9 @@ class CompressedTree:
                 return node_at_mid
 
             mid_height_next = heights[mid_idx + 1]
+            if block.height < mid_height_next:
+                return node_at_mid
+
             block_at_mid_next = block.prev_at_height(mid_height_next)
             if self.node_with_block(block_at_mid_next, self.nodes_at_height[mid_height_next]) is None:
                 return node_at_mid
@@ -158,7 +156,7 @@ class CompressedTree:
 
         # check if there is path overlap with any children currently in the tree
         if len(prev_in_tree.children) == 0:
-            return self.add_tree_node(block=block, parent=prev_in_tree, is_latest=True)
+            return self.add_tree_node(block=block, parent=prev_in_tree, has_weight=True)
 
         if above_prev_in_tree in self.next_block_to_child_node:
             child = self.next_block_to_child_node[above_prev_in_tree]
@@ -169,12 +167,12 @@ class CompressedTree:
                     block=ancestor,
                     parent=prev_in_tree,
                     children={child},
-                    is_latest=False
+                    has_weight=False
                 )
 
                 child.parent = anc_node
 
-                node = self.add_tree_node(block=block, parent=anc_node, is_latest=True)
+                node = self.add_tree_node(block=block, parent=anc_node, has_weight=True)
                 # add node as a child to ancestor node
                 anc_node.children.add(node)
                 # the child is now a child of anc_node, rather than prev_in_tree
@@ -184,11 +182,11 @@ class CompressedTree:
                 self.next_block_to_child_node[above_anc] = child
                 return node
         # insert on the prev_in_tree
-        return self.add_tree_node(block=block, parent=prev_in_tree, is_latest=True)
+        return self.add_tree_node(block=block, parent=prev_in_tree, has_weight=True)
 
-    def add_tree_node(self, block, parent, is_latest, children=None):
+    def add_tree_node(self, block, parent, has_weight, children=None):
         # create the node
-        node = Node(block, parent, is_latest, children=children)
+        node = Node(block, parent, has_weight, children=children)
         # make it a child
         if parent is not None:
             parent.children.add(node)
@@ -262,36 +260,42 @@ class CompressedTree:
         num_children = len(node.children)
 
         if num_children > 1:
-            node.is_latest = False
+            node.has_weight = False
         elif num_children == 1:
             del_node_with_child(node)
         else:
             parent = node.parent
             del_node_no_child(node)
-            if not parent.is_latest and len(parent.children) == 1:
+            if not parent.has_weight and len(parent.children) == 1:
                 del_node_with_child(parent)
 
     def delete_non_subtree(self, new_finalised, node):
-        if node == new_finalised:
-            return
-        else:
-            children = node.children
-            for child in children:
+        if node != new_finalised:
+            for child in node.children:
                 self.delete_non_subtree(new_finalised, child)
+                # TODO: actually delete the node
 
     def prune(self, new_finalised):
         new_finalised.parent = None
         self.delete_non_subtree(new_finalised, self.root)
         self.root = new_finalised
 
-    def find_head(self) -> Node:
-        # calculate the scores of every node starting at the leaves
-        for height in sorted(self.nodes_at_height, reverse=True):
-            for node in self.nodes_at_height[height]:
-                node.score = sum(child.score for child in node.children)
-                node.score += node.block.weight if node.is_latest else 0
+    def calculate_scores(self, node, weight, score):
+        if not any(node.children):
+            score[node] = weight.get(node.block, 0)
+        else:
+            score[node] = weight.get(node.block, 0)
+            for child in node.children:
+                self.calculate_scores(child, weight, score)
+                score[node] += score[child]
+        return score
+
+    def find_head(self, weight) -> Node:
+        # calculate the score for each block
+        scores = self.calculate_scores(self.root, weight, dict())
+
         # run GHOST
         node = self.root
         while len(node.children) > 0:
-            node = sorted(node.children, key=lambda x: x.score, reverse=True)[0]
+            node = sorted(node.children, key=lambda n: scores.get(n, 0), reverse=True)[0]
         return node
