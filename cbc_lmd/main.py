@@ -333,6 +333,6 @@ class CompressedTree:
         # run GHOST
         node = self.root
         while len(node.children) > 0:
-            node = sorted(node.children, key=lambda n: scores.get(n, 0), reverse=True)[0]
+            node = max(node.children, key=lambda n: scores.get(n, 0))
         return node
 

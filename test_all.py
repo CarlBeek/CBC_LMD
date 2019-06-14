@@ -270,10 +270,13 @@ def test_massive_tree():
         block = Block(genesis)
         _ = tree.add_new_latest_block(block, i)
 
-    for i in range(1024):
+    for i in range(1000):
         print(i)
         prev_val = random.randint(0, 2)
         new_block = Block(tree.latest_block_nodes[prev_val].block)
         new_val = random.randint(0, 2)
         tree.add_new_latest_block(new_block, new_val)
         assert tree.size <= 6
+
+    block = tree.latest_block_nodes[2].block 
+    assert tree.find_head({block: 1}).block.prev_at_height(block.height) == block
