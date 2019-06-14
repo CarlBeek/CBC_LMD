@@ -247,30 +247,21 @@ def test_find_prev_in_tree():
     block_2 = Block(tree.latest_block_nodes[2].block)
     assert block_2.parent_block == tree.find_prev_node_in_tree(block_2).block
 
-    """
-    for i in range(1024):
-        0
-    Val 2's block was built on
-    by val 2
-    1
-    Val 2's block was built on
+def test_random():
 
+    genesis = Block(None)
+    tree = CompressedTree(genesis)
 
+    for i in range(3):
+        block = Block(genesis)
+        _ = tree.add_new_latest_block(block, i)
 
-        print(i)
-        prev_val = random.randint(0, 2)
-        print("Val {}'s block was built on".format(prev_val))
-        new_block = Block(tree.latest_block_nodes[prev_val].block)
-        if new_block.parent_block != tree.find_prev_node_in_tree(new_block).block:
-            b = tree.find_prev_node_in_tree(new_block).block
-            assert new_block.parent_block == b
-        new_val = random.randint(0, 2)
-        print("by val {}".format(new_val))
-        tree.add_new_latest_block(new_block, new_val)
-        assert tree.size <= 6
-    """
+    new_block = Block(tree.latest_block_nodes[1].block)
+    tree.add_new_latest_block(new_block, 1)
 
-"""
+    new_block = Block(tree.latest_block_nodes[1].block)
+    tree.add_new_latest_block(new_block, 1)
+
 def test_massive_tree():
     genesis = Block(None)
     tree = CompressedTree(genesis)
@@ -286,4 +277,3 @@ def test_massive_tree():
         new_val = random.randint(0, 2)
         tree.add_new_latest_block(new_block, new_val)
         assert tree.size <= 6
-"""

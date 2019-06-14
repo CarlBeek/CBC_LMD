@@ -226,11 +226,10 @@ class CompressedTree:
                 del self.blocks_at_height[node.block.height]
                 self.heights.remove(node.block.height)
 
-            # update the path_block_to_child_node map
-            # which will only exist, if a node's block points to itself...
-            if node.block in self.path_block_to_child_node:
-                assert self.path_block_to_child_node[node.block] == node
-                del self.path_block_to_child_node[node.block]
+            # get the path block if it might exist
+            if node.parent is not None:
+                path_block = node.block.prev_at_height(node.parent.block.height + 1)
+                del(self.path_block_to_child_node[path_block])
 
             # delete the node
             del(self.node_with_block[node.block])
