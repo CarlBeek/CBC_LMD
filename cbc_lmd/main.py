@@ -50,6 +50,12 @@ class Block:
             else:
                 raise Exception("Skip list error")
 
+    def on_top(self, block):
+        if block.height > self.height:
+            return False
+        
+        block_at_height = block.prev_at_height(block.height)
+        return block == block_at_height
 
 class Node:
     parent = None  # type: Node
