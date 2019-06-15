@@ -4,7 +4,7 @@ from cbc_lmd.main import (
     CompressedTree,
 )
 from cbc_lmd.message import (
-    build_graph,
+    BoundryStore,
     ValidatorSet
 )
 
@@ -337,9 +337,9 @@ def test_build_graph_basic():
         for val in val_set:
             val.see_message(m)
 
-    res = build_graph(1, 0, val_set.genesis, set(val_set), set(), dict())
-    for val in res[0]:
-        assert res[0][val] in latest
+    boundry_store = BoundryStore(val_set, val_set.genesis, 1)
+    for val in boundry_store.layers[0]:
+        assert boundry_store.layers[0][val] in latest
 
 def test_build_graph_two_layers():
     val_set = ValidatorSet(3)
@@ -356,11 +356,8 @@ def test_build_graph_two_layers():
     for val in val_set:
         one.add(val.make_new_message())
 
-    # TODO: i have a bug; if i deliver here, but i don't make a new message, 
-    # would it consider the validator agreeing? don't think so actually
-    vals = set(val_set)
-    res = build_graph(1, 0, val_set.genesis, vals, set(), dict())
-    for val in res[1]:
-        assert res[1][val] in one
-    for val in res[0]:
-        assert res[0][val] in zero
+    boundry_store = BoundryStore(val_set, val_set.genesis, 1)
+    for val in boundry_store.layers[1]:
+        assert boundry_store.layers[1][val] in one
+    for val in boundry_store.layers[0]:
+        assert boundry_store.layers[0][val] in zero

@@ -60,11 +60,10 @@ class Validator:
 class ValidatorSet:
 
     def __init__(self, num_validators, weight=None):
-        # give only the last validator weight, by default
+        # give all validators weight 1, by default
         if weight is None:
-            weight = {v : 0 for v in range(num_validators)}
-            weight[num_validators - 1] = 1
-
+            weight = {v : 1 for v in range(num_validators)}
+        self.weight = weight
         self.genesis = Block(None)
         self.validators = dict()
         for name in range(num_validators):
@@ -90,51 +89,63 @@ class ValidatorSet:
             raise StopIteration
 
 
-# TODO: should keep a cache of val -> message_height -> message
+class BoundryStore:
 
-def build_graph(q, k, block, V, M, layer_boundry):
-    if not any(V):
-        return layer_boundry
+    def __init__(self, validator_set, block, q): 
+        self.validator_set = validator_set
+        self.block = block
+        self.q = q
+        self.layers = self.build_all_layers()
 
-    if k == 0:
-        new_M = dict()
-        new_V = set()
+    def build_first_layer(self):
+        layer = dict()
 
-        for val in V:
+        for val in self.validator_set:
             prev_agreeing_message = None
 
             for i in range(len(val.own_message_at_height) - 1, -1, -1):
                 message_at_height = val.own_message_at_height[i]
-                if message_at_height.block.on_top(block):
+                if message_at_height.block.on_top(self.block):
                     prev_agreeing_message = message_at_height
                 else:
                     break
             
             if prev_agreeing_message is not None:
-                new_M[val] = message_at_height
-                new_V.add(val)
+                layer[val] = message_at_height
 
-        layer_boundry[0] = new_M
-        return build_graph(q, k + 1, block, new_V, new_M, layer_boundry)
-    else:
-        new_M = dict()
-        new_V = set()
+        return layer
 
-        for val in V:
-            prev_layer_boundry_height = M[val].message_height
+    def build_next_layer(self, prev_layer):
+        layer = dict()
+
+        for val in prev_layer:
+            prev_layer_boundry_height = prev_layer[val].message_height
             for i in range(prev_layer_boundry_height, len(val.own_message_at_height)):
                 # see how many messages it acknowledges in the previous layer!
                 total_weight = 0
                 message_at_height = val.own_message_at_height[i]
-                for other_val in V:
-                    prev_layer_boundry = M[other_val] # must be defined, as is in V
+                for other_val in prev_layer:
+                    prev_layer_boundry = prev_layer[other_val] # must be defined, as is in V
                     if other_val.name not in message_at_height.latest_messages:
                         continue
                     if message_at_height.latest_messages[other_val.name].message_height >= prev_layer_boundry.message_height:
-                        total_weight += 1
-                if total_weight >= q:
-                    new_M[val] = message_at_height
-                    new_V.add(val)
+                        total_weight += self.validator_set.weight[other_val.name]
+                if total_weight >= self.q:
+                    layer[val] = message_at_height
                     break
-        layer_boundry[k] = new_M
-        return build_graph(q, k + 1, block, new_V, new_M, layer_boundry)
+                    
+        return layer
+
+
+    def build_all_layers(self):
+        layer = dict()
+        layer[0] = self.build_first_layer()
+
+        prev_layer_height = 0
+        while any(layer[prev_layer_height]):
+            layer[prev_layer_height + 1] = self.build_next_layer(layer[prev_layer_height])
+            prev_layer_height += 1
+
+        return layer
+        
+
