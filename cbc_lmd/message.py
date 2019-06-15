@@ -1,5 +1,12 @@
 from cbc_lmd.main import CompressedTree, Block
 
+from typing import (
+    List,
+    Optional,
+    Set,
+    Dict,
+)
+
 class Message:
 
     def __init__(self, sender, block: Block, latest_messages, prev_message: 'Message'=None):
@@ -80,7 +87,7 @@ class ValidatorSet:
         self.n = 0
         return self
 
-    def __next__(self):
+    def __next__(self) -> Validator:
         if self.n < len(self.validators):
             val = self.validators[self.n]
             self.n += 1
@@ -89,7 +96,7 @@ class ValidatorSet:
             raise StopIteration
 
 
-class BoundryStore:
+class LayerStore:
 
     def __init__(self, validator_set, block, q): 
         self.validator_set = validator_set
@@ -97,7 +104,7 @@ class BoundryStore:
         self.q = q
         self.layers = self.build_all_layers()
 
-    def build_first_layer(self):
+    def build_first_layer(self) -> Dict[Validator, Message]:
         layer = dict()
 
         for val in self.validator_set:
@@ -115,7 +122,7 @@ class BoundryStore:
 
         return layer
 
-    def build_next_layer(self, prev_layer):
+    def build_next_layer(self, prev_layer: Dict[Validator, Message]) -> Dict[Validator, Message]:
         layer = dict()
 
         for val in prev_layer:
@@ -137,7 +144,7 @@ class BoundryStore:
         return layer
 
 
-    def build_all_layers(self):
+    def build_all_layers(self) -> Dict[int, Dict[Validator, Message]]:
         layer = dict()
         layer[0] = self.build_first_layer()
 
@@ -148,4 +155,42 @@ class BoundryStore:
 
         return layer
         
+    def add_message(self, message: Message) -> None:
+        vals_at_layers = {0: set()}
+
+        for val in message.latest_messages:
+            latest_message = message.latest_messages[val]
+
+            for layer_height in range(len(self.layers) - 1, -1, -1):
+                if val not in self.layers[layer_height]:
+                    continue
+                elif self.layers[layer_height][val].message_height <= latest_message.message_height:
+                    if layer_height not in vals_at_layers:
+                        vals_at_layers[layer_height] = set()
+                    vals_at_layers[layer_height].add(val)
+
+        max_layer = max(vals_at_layers, default=0)
+        weight_at_max_layer = sum([self.validator_set.weight[v] for v in vals_at_layers[max_layer]])
+
+        if weight_at_max_layer >= self.q:
+            # this message see's at least q weight at layer max_layer, so it's up 1
+            if max_layer + 1 not in self.layers:
+                self.layers[max_layer + 1] = dict()
+
+            self.layers[max_layer + 1][message.sender] = message
+        else:
+            # only add if the node does not already have a message at this layer
+            if message.sender not in self.layers[max_layer]:
+                self.layers[max_layer][message.sender] = message
+
+    def fault_tolerance(self) -> float:
+        num_layers = len(self.layers)
+        return (2 * self.q - sum(self.validator_set.weights.values())) / (1 - .5**num_layers)
+
+    def block_has_fault_tolerance(self, t: float) -> bool:
+        return self.fault_tolerance() >= t
+
+
+
+
 

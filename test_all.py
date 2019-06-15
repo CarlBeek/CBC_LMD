@@ -4,7 +4,7 @@ from cbc_lmd.main import (
     CompressedTree,
 )
 from cbc_lmd.message import (
-    BoundryStore,
+    LayerStore,
     ValidatorSet
 )
 
@@ -337,9 +337,9 @@ def test_build_graph_basic():
         for val in val_set:
             val.see_message(m)
 
-    boundry_store = BoundryStore(val_set, val_set.genesis, 1)
-    for val in boundry_store.layers[0]:
-        assert boundry_store.layers[0][val] in latest
+    layer_store = LayerStore(val_set, val_set.genesis, 1)
+    for val in layer_store.layers[0]:
+        assert layer_store.layers[0][val] in latest
 
 def test_build_graph_two_layers():
     val_set = ValidatorSet(3)
@@ -356,8 +356,33 @@ def test_build_graph_two_layers():
     for val in val_set:
         one.add(val.make_new_message())
 
-    boundry_store = BoundryStore(val_set, val_set.genesis, 1)
-    for val in boundry_store.layers[1]:
-        assert boundry_store.layers[1][val] in one
-    for val in boundry_store.layers[0]:
-        assert boundry_store.layers[0][val] in zero
+    layer_store = LayerStore(val_set, val_set.genesis, 1)
+    for val in layer_store.layers[1]:
+        assert layer_store.layers[1][val] in one
+    for val in layer_store.layers[0]:
+        assert layer_store.layers[0][val] in zero
+
+def test_build_graph_two_layers_incremental():
+    val_set = ValidatorSet(3)
+    layer_store = LayerStore(val_set, val_set.genesis, 1)
+
+    zero = set()
+    for val in val_set:
+        new_message = val.make_new_message()
+        layer_store.add_message(new_message)
+        zero.add(new_message)
+
+    for val in val_set:
+        for m in zero:
+            val.see_message(m)
+
+    one = set()
+    for val in val_set:
+        new_message = val.make_new_message()
+        layer_store.add_message(new_message)
+        one.add(new_message)
+
+    for val in layer_store.layers[1]:
+        assert layer_store.layers[1][val] in one
+    for val in layer_store.layers[0]:
+        assert layer_store.layers[0][val] in zero
