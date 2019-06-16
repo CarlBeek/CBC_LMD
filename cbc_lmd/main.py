@@ -5,7 +5,7 @@ from typing import (
     Optional,
     Set,
 )
-
+import random
 
 SKIP_LENGTH = 32
 
@@ -15,12 +15,14 @@ class Block:
     skip_list = []  # type: List[Optional[Block]]
     parent_block = None  # type: Block
 
-    def __init__(self, parent_block: Optional['Block']=None) -> None:
+    def __init__(self, parent_block: Optional['Block']=None, name: Optional[int]=None) -> None:
         if parent_block is not None:
             self.parent_block = parent_block
             self.height = self.parent_block.height + 1
         else:
             self.height = 0
+
+        self.name = -1 if name is None else name
 
         self.skip_list = [None] * SKIP_LENGTH
         # build the skip list
@@ -81,6 +83,7 @@ class CompressedTree:
         self.nodes_at_height = dict()
         self.heights = sortedset()
         self.next_block_to_child_node = dict()
+        self.node_counter = 0
         self.root = self.add_tree_node(genesis, None, True)
 
     def node_with_block(self, block: Block, nodes: Set[Node]) -> Optional[Node]:
@@ -147,6 +150,8 @@ class CompressedTree:
         return new_node
 
     def add_block(self, block: Block) -> Node:
+        block.name = self.node_counter
+        self.node_counter += 1
         prev_in_tree = self.find_prev_in_tree(block)
         # above prev in tree
         above_prev_in_tree = block.prev_at_height(prev_in_tree.block.height + 1)

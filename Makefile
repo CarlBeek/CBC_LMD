@@ -3,3 +3,6 @@ install_test:
 
 test:
 	pytest test_all.py
+
+visualise:
+	python visualisations/tree_visualiser.py
