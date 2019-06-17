@@ -6,7 +6,7 @@ from typing import (
     Set,
     Dict,
 )
-
+import random
 
 SKIP_LENGTH = 32
 
@@ -16,12 +16,14 @@ class Block:
     skip_list = []  # type: List[Optional[Block]]
     parent_block = None  # type: Block
 
-    def __init__(self, parent_block: Optional['Block']=None) -> None:
+    def __init__(self, parent_block: Optional['Block']=None, name: Optional[int]=None) -> None:
         if parent_block is not None:
             self.parent_block = parent_block
             self.height = self.parent_block.height + 1
         else:
             self.height = 0
+
+        self.name = 0 if name is None else name
 
         self.skip_list = [None] * SKIP_LENGTH
         # build the skip list
@@ -99,6 +101,7 @@ class CompressedTree:
         self.node_with_block = dict() # type: Dict[Block, Node]
         self.heights = sortedset(key = lambda x: -x) # store from largest -> smallest
         self.path_block_to_child_node = dict() # type: Dict[Block, Node]
+        self.node_counter = 1
         self.root = self.add_tree_node(genesis, None, True)
 
     # TODO: can this function be in a subclass? I'm thinking that we have an LMD tree...
@@ -115,6 +118,8 @@ class CompressedTree:
         return new_node
 
     def add_block_with_weight(self, block: Block) -> Node:
+        block.name = self.node_counter
+        self.node_counter += 1
         # node in tree that is the most recent ancestor of block
         prev_node_in_tree = self.find_prev_node_in_tree(block)
         if prev_node_in_tree is None:
