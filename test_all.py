@@ -3,6 +3,10 @@ from cbc_lmd.main import (
     Block,
     CompressedTree,
 )
+from cbc_lmd.message import (
+    LayerStore,
+    ValidatorSet
+)
 
 
 def test_inserting_on_genesis():
@@ -280,3 +284,105 @@ def test_massive_tree():
 
     block = tree.latest_block_nodes[2].block 
     assert tree.find_head({block: 1}).block.prev_at_height(block.height) == block
+
+
+def test_make_val_set():
+    val_set = ValidatorSet(3)
+    assert len(val_set.validators) == 3
+    for val in val_set:
+        assert val.tree.root.block == val_set.genesis
+
+
+def test_make_new_message():
+    val_set = ValidatorSet(3)
+    message = val_set.make_new_message(0)
+    assert message.block.parent_block == val_set.genesis
+    assert val_set.validators[0].latest_messages[0] == message
+
+def test_make_new_messages():
+    val_set = ValidatorSet(3)
+    
+    last_message = None
+    for i in range(100):
+        last_message = val_set.make_new_message(0)
+
+    for val in val_set:
+        val.see_message(last_message)
+        assert val.latest_messages[0] == last_message
+        assert len(val.justification) == 100
+
+def test_make_new_messages_on_eachothers():
+    val_set = ValidatorSet(3)
+    
+    for i in range(100):
+        latest = set()
+        for val in val_set:
+            latest.add(val.make_new_message())
+        for val in val_set:
+            for m in latest:
+                val.see_message(m)
+        
+        for val in val_set:
+            for i in range(3):
+                assert val.latest_messages[i] in latest
+
+def test_build_graph_basic():
+    val_set = ValidatorSet(3)
+
+    latest = set()
+    for val in val_set:
+        latest.add(val.make_new_message())
+    
+    for m in latest:
+        for val in val_set:
+            val.see_message(m)
+
+    layer_store = LayerStore(val_set, val_set.genesis, 1)
+    for val in layer_store.layers[0]:
+        assert layer_store.layers[0][val] in latest
+
+def test_build_graph_two_layers():
+    val_set = ValidatorSet(3)
+
+    zero = set()
+    for val in val_set:
+        zero.add(val.make_new_message())
+
+    for val in val_set:
+        for m in zero:
+            val.see_message(m)
+
+    one = set()
+    for val in val_set:
+        one.add(val.make_new_message())
+
+    layer_store = LayerStore(val_set, val_set.genesis, 1)
+    for val in layer_store.layers[1]:
+        assert layer_store.layers[1][val] in one
+    for val in layer_store.layers[0]:
+        assert layer_store.layers[0][val] in zero
+
+def test_build_graph_two_layers_incremental():
+    val_set = ValidatorSet(3)
+    layer_store = LayerStore(val_set, val_set.genesis, 1)
+
+    zero = set()
+    for val in val_set:
+        new_message = val.make_new_message()
+        layer_store.add_message(new_message)
+        zero.add(new_message)
+
+    for val in val_set:
+        for m in zero:
+            val.see_message(m)
+
+    one = set()
+    for val in val_set:
+        new_message = val.make_new_message()
+        layer_store.add_message(new_message)
+        one.add(new_message)
+
+    for val in layer_store.layers[1]:
+        assert layer_store.layers[1][val] in one
+    for val in layer_store.layers[0]:
+        assert layer_store.layers[0][val] in zero
